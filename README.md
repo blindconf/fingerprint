@@ -1,5 +1,5 @@
 ### Fake audio Demo
-A demo with a selection of fake audio samples from different vocoders employed in our experiments is available online: [Fingerprint Demo](https://github.com/blindconf/fingerprint_demo).
+A demo with a selection of fake audio samples from different vocoders employed in our experiments is available online: [Fingerprint Demo](https://blindconf.github.io/fingerprint_demo/).
 
 ### Computing Fingerprints and running the Open-world setting
 To compute the fingerprints run the script as follows:
