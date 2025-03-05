@@ -1,0 +1,7 @@
+{"time":"2025-01-23T22:53:33.594047607+01:00","level":"INFO","msg":"stream: starting","core version":"0.19.4","symlink path":"/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250123_225333-6iiwczmx/logs/debug-core.log"}
+{"time":"2025-01-23T22:53:38.620956269+01:00","level":"INFO","msg":"created new stream","id":"6iiwczmx"}
+{"time":"2025-01-23T22:53:38.620995623+01:00","level":"INFO","msg":"stream: started","id":"6iiwczmx"}
+{"time":"2025-01-23T22:53:38.62107259+01:00","level":"INFO","msg":"writer: Do: started","stream_id":"6iiwczmx"}
+{"time":"2025-01-23T22:53:38.621134727+01:00","level":"INFO","msg":"handler: started","stream_id":"6iiwczmx"}
+{"time":"2025-01-23T22:53:38.621195322+01:00","level":"INFO","msg":"sender: started","stream_id":"6iiwczmx"}
+{"time":"2025-01-23T22:53:38.84809063+01:00","level":"INFO","msg":"Starting system monitor"}

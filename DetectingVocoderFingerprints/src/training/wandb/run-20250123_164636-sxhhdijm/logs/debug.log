@@ -1,0 +1,30 @@
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_setup.py:_flush():68] Current SDK version is 0.19.4
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_setup.py:_flush():68] Configure stats pid to 2497408
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_setup.py:_flush():68] Loading settings from /home/hessos4l/.config/wandb/settings
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_setup.py:_flush():68] Loading settings from /home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/settings
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_init.py:setup_run_log_directory():624] Logging user logs to /home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250123_164636-sxhhdijm/logs/debug.log
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_init.py:setup_run_log_directory():625] Logging internal logs to /home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250123_164636-sxhhdijm/logs/debug-internal.log
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_init.py:init():743] calling init triggers
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_init.py:init():748] wandb.init called with sweep_config: {}
+config: {'architecture': 'ResNet', 'dataset': 'WaveFake', 'classification_type': 'Multi_class', 'epochs': 100}
+2025-01-23 16:46:36,532 INFO    MainThread:2497408 [wandb_init.py:init():776] starting backend
+2025-01-23 16:46:36,673 WARNING MainThread:2497408 [wandb_init.py:init():1448] interrupted
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 1444, in init
+    return wi.init(run_settings, run_config)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 779, in init
+    service = self._wl.ensure_service()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/wandb_setup.py", line 280, in ensure_service
+    self._connection = service_connection.connect_to_service(self._settings)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/lib/service_connection.py", line 40, in connect_to_service
+    return _start_and_connect_service(settings)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/lib/service_connection.py", line 75, in _start_and_connect_service
+    proc.start()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/service/service.py", line 232, in start
+    self._launch_server()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/service/service.py", line 224, in _launch_server
+    self._wait_for_ports(fname, proc=internal_proc)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/wandb/sdk/service/service.py", line 105, in _wait_for_ports
+    time.sleep(0.2)
+KeyboardInterrupt

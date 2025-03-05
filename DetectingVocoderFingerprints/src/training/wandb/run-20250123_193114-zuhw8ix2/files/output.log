@@ -1,0 +1,147 @@
+Initializing ResNet model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+test_dataset size: 9170
+validation_dataset size: 9170
+Set up the ResNet model...
+Training started...
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:30<00:00,  9.37it/s]
+Validation batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  7.53it/s]
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.43it/s]
+
+New best model found! Saving...
+Epoch: 1
+Training_Loss: 0.9790003031803756
+Validating_Loss: 0.3405744234720866
+Training_Accuracy: 0.6303026080131531
+Validating_Accuracy: 0.8591057658195496
+Training_F1_Score: 0.6241190433502197
+Validating_F1_Score: 0.8516005277633667
+Training_Precision: 0.6766014099121094
+Validating_Precision: 0.8660479784011841
+Training_Recall: 0.6303026080131531
+Validating_Recall: 0.8591058254241943
+Training_AUROC: 0.9341838359832764
+Validating_AUROC: 0.9806650876998901
+Validation batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  8.86it/s]
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.43it/s]
+
+New best model found! Saving...
+Epoch: 2
+Training_Loss: 0.22422802349623902
+Validating_Loss: 0.638096212512917
+Training_Accuracy: 0.9124318361282349
+Validating_Accuracy: 0.7774263620376587
+Training_F1_Score: 0.9123499989509583
+Validating_F1_Score: 0.7480932474136353
+Training_Precision: 0.9122767448425293
+Validating_Precision: 0.785810112953186
+Training_Recall: 0.9124318361282349
+Validating_Recall: 0.7774263620376587
+Training_AUROC: 0.9904715418815613
+Validating_AUROC: 0.9730790257453918
+Validation batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00,  9.19it/s]
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.38it/s]
+Epoch: 3
+Training_Loss: 0.11639412903983003
+Validating_Loss: 0.20980067551136017
+Training_Accuracy: 0.9555888772010803
+Validating_Accuracy: 0.9235550761222839
+Training_F1_Score: 0.9555922150611877
+Validating_F1_Score: 0.9245971441268921
+Training_Precision: 0.9555969834327698
+Validating_Precision: 0.9283201098442078
+Training_Recall: 0.9555888175964355
+Validating_Recall: 0.9235551357269287
+Training_AUROC: 0.9970144033432007
+Validating_AUROC: 0.9951761364936829
+Validation batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  8.77it/s]
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.40it/s]
+
+New best model found! Saving...
+Epoch: 4
+Training_Loss: 0.08455572779637596
+Validating_Loss: 1.0270981076690886
+Training_Accuracy: 0.9680479764938354
+Validating_Accuracy: 0.6990185379981995
+Training_F1_Score: 0.96804279088974
+Validating_F1_Score: 0.6795511841773987
+Training_Precision: 0.9680383205413818
+Validating_Precision: 0.785055935382843
+Training_Recall: 0.9680479764938354
+Validating_Recall: 0.6990185379981995
+Training_AUROC: 0.998310387134552
+Validating_AUROC: 0.971625804901123
+Validation batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00,  9.11it/s]
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.36it/s]
+Epoch: 5
+Training_Loss: 0.0652979110474682
+Validating_Loss: 0.3016638739241494
+Training_Accuracy: 0.9752044677734375
+Validating_Accuracy: 0.8946564793586731
+Training_F1_Score: 0.9752089977264404
+Validating_F1_Score: 0.8833354711532593
+Training_Precision: 0.9752141237258911
+Validating_Precision: 0.9315876364707947
+Training_Recall: 0.9752044677734375
+Validating_Recall: 0.8946565389633179
+Training_AUROC: 0.9989548325538635
+Validating_AUROC: 0.9986634850502014
+Validation batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  8.60it/s]
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:26<00:00, 10.99it/s]
+Epoch: 6
+Training_Loss: 0.058549062410557726
+Validating_Loss: 0.08023533866637284
+Training_Accuracy: 0.9780943393707275
+Validating_Accuracy: 0.9713194966316223
+Training_F1_Score: 0.9780921936035156
+Validating_F1_Score: 0.9711600542068481
+Training_Precision: 0.9780905246734619
+Validating_Precision: 0.9718822240829468
+Training_Recall: 0.9780942797660828
+Validating_Recall: 0.9713194966316223
+Training_AUROC: 0.9991616010665894
+Validating_AUROC: 0.9992786645889282
+Validation batches:   8%|████████▌                                                                                              | 3/36 [00:02<00:23,  1.41it/s]
+Training Epochs:   6%|██████▎                                                                                                  | 6/100 [03:30<54:50, 35.00s/it]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 223, in <module>
+    for waveform, label in tqdm(validation_loader, desc="Validation batches"):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/tqdm/std.py", line 1181, in __iter__
+    for obj in iterable:
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1328, in _next_data
+    idx, data = self._get_data()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1284, in _get_data
+    success, data = self._try_get_data()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1132, in _try_get_data
+    data = self._data_queue.get(timeout=timeout)
+  File "/opt/anaconda3/lib/python3.9/queue.py", line 180, in get
+    self.not_empty.wait(remaining)
+  File "/opt/anaconda3/lib/python3.9/threading.py", line 316, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Exception in thread Thread-866:
+Traceback (most recent call last):
+  File "/opt/anaconda3/lib/python3.9/threading.py", line 980, in _bootstrap_inner
+    self.run()
+  File "/opt/anaconda3/lib/python3.9/threading.py", line 917, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/_utils/pin_memory.py", line 54, in _pin_memory_loop
+    do_one_step()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/_utils/pin_memory.py", line 31, in do_one_step
+    r = in_queue.get(timeout=MP_STATUS_CHECK_INTERVAL)
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/queues.py", line 122, in get
+    return _ForkingPickler.loads(res)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/multiprocessing/reductions.py", line 355, in rebuild_storage_fd
+    fd = df.detach()
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/resource_sharer.py", line 57, in detach
+    with _resource_sharer.get_connection(self._id) as conn:
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/resource_sharer.py", line 86, in get_connection
+    c = Client(address, authkey=process.current_process().authkey)
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/connection.py", line 502, in Client
+    c = SocketClient(address)
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/connection.py", line 630, in SocketClient
+    s.connect(address)
+FileNotFoundError: [Errno 2] No such file or directory

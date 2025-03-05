@@ -1,0 +1,23 @@
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_setup.py:_flush():68] Current SDK version is 0.19.4
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_setup.py:_flush():68] Configure stats pid to 2493648
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_setup.py:_flush():68] Loading settings from /home/hessos4l/.config/wandb/settings
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_setup.py:_flush():68] Loading settings from /home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/settings
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_init.py:setup_run_log_directory():624] Logging user logs to /home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250123_164204-hlsnuuru/logs/debug.log
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_init.py:setup_run_log_directory():625] Logging internal logs to /home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250123_164204-hlsnuuru/logs/debug-internal.log
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_init.py:init():743] calling init triggers
+2025-01-23 16:42:04,134 INFO    MainThread:2493648 [wandb_init.py:init():748] wandb.init called with sweep_config: {}
+config: {'architecture': 'ResNet', 'dataset': 'WaveFake', 'classification_type': 'Multi_class', 'epochs': 100}
+2025-01-23 16:42:04,135 INFO    MainThread:2493648 [wandb_init.py:init():776] starting backend
+2025-01-23 16:42:04,364 INFO    MainThread:2493648 [wandb_init.py:init():780] sending inform_init request
+2025-01-23 16:42:04,389 INFO    MainThread:2493648 [backend.py:_multiprocessing_setup():97] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-01-23 16:42:04,390 INFO    MainThread:2493648 [wandb_init.py:init():795] backend started and connected
+2025-01-23 16:42:04,394 INFO    MainThread:2493648 [wandb_init.py:init():888] updated telemetry
+2025-01-23 16:42:04,395 INFO    MainThread:2493648 [wandb_init.py:init():915] communicating run to backend with 90.0 second timeout
+2025-01-23 16:42:07,051 INFO    MainThread:2493648 [wandb_init.py:init():967] starting run threads in backend
+2025-01-23 16:42:07,134 INFO    MainThread:2493648 [wandb_run.py:_console_start():2409] atexit reg
+2025-01-23 16:42:07,135 INFO    MainThread:2493648 [wandb_run.py:_redirect():2259] redirect: wrap_raw
+2025-01-23 16:42:07,135 INFO    MainThread:2493648 [wandb_run.py:_redirect():2324] Wrapping output streams.
+2025-01-23 16:42:07,135 INFO    MainThread:2493648 [wandb_run.py:_redirect():2349] Redirects installed.
+2025-01-23 16:42:07,136 INFO    MainThread:2493648 [wandb_init.py:init():1009] run started, returning control to user process
+2025-01-23 16:42:43,313 WARNING MsgRouterThr:2493648 [router.py:message_loop():75] message_loop has been closed

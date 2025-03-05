@@ -1,0 +1,15 @@
+{"time":"2025-01-24T01:44:35.592194795+01:00","level":"INFO","msg":"stream: starting","core version":"0.19.4","symlink path":"/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250124_014435-3qxxckrg/logs/debug-core.log"}
+{"time":"2025-01-24T01:44:37.906582567+01:00","level":"INFO","msg":"created new stream","id":"3qxxckrg"}
+{"time":"2025-01-24T01:44:37.90662156+01:00","level":"INFO","msg":"stream: started","id":"3qxxckrg"}
+{"time":"2025-01-24T01:44:37.906686724+01:00","level":"INFO","msg":"writer: Do: started","stream_id":"3qxxckrg"}
+{"time":"2025-01-24T01:44:37.906727321+01:00","level":"INFO","msg":"sender: started","stream_id":"3qxxckrg"}
+{"time":"2025-01-24T01:44:37.906760263+01:00","level":"INFO","msg":"handler: started","stream_id":"3qxxckrg"}
+{"time":"2025-01-24T01:44:38.196850464+01:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-24T01:46:30.339006355+01:00","level":"INFO","msg":"stream: closing","id":"3qxxckrg"}
+{"time":"2025-01-24T01:46:30.339049106+01:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-24T01:46:30.339828441+01:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-24T01:46:30.903252894+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-24T01:46:31.111399645+01:00","level":"INFO","msg":"handler: closed","stream_id":"3qxxckrg"}
+{"time":"2025-01-24T01:46:31.111438188+01:00","level":"INFO","msg":"writer: Close: closed","stream_id":"3qxxckrg"}
+{"time":"2025-01-24T01:46:31.11147093+01:00","level":"INFO","msg":"sender: closed","stream_id":"3qxxckrg"}
+{"time":"2025-01-24T01:46:31.111521336+01:00","level":"INFO","msg":"stream: closed","id":"3qxxckrg"}

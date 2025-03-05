@@ -1,0 +1,62 @@
+Initializing SE-ResNet model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+validation_dataset size: 9170
+test_dataset size: 9170
+Set up the SE-ResNet model...
+Training started...
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:30<00:00,  9.51it/s]
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  8.44it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.20it/s]
+
+New best model found! Saving...
+Epoch: 1
+Training_Loss: 1.034481769550968
+Validating_Loss: 0.4946061074733734
+Training_Accuracy: 0.6424209475517273
+Validating_Accuracy: 0.8310796022415161
+Training_F1_Score: 0.6265065670013428
+Validating_F1_Score: 0.8220376372337341
+Training_Precision: 0.6566283702850342
+Validating_Precision: 0.834131121635437
+Training_Recall: 0.6424209475517273
+Validating_Recall: 0.8310796022415161
+Training_AUROC: 0.931984543800354
+Validating_AUROC: 0.9755375385284424
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00,  9.68it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.18it/s]
+
+New best model found! Saving...
+Epoch: 2
+Training_Loss: 0.2820677062048729
+Validating_Loss: 0.20071926547421348
+Training_Accuracy: 0.8813658952713013
+Validating_Accuracy: 0.9097055792808533
+Training_F1_Score: 0.8806699514389038
+Validating_F1_Score: 0.9051519632339478
+Training_Precision: 0.8817716240882874
+Validating_Precision: 0.9253044724464417
+Training_Recall: 0.8813658952713013
+Validating_Recall: 0.9097055196762085
+Training_AUROC: 0.9831462502479553
+Validating_AUROC: 0.9922574162483215
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.04it/s]
+Training batches:  12%|██████████▏                                                                           | 34/287 [00:04<00:35,  7.16it/s]
+Epoch: 3
+Training_Loss: 0.13457047427884378
+Validating_Loss: 0.283945447868771
+Training_Accuracy: 0.9473691582679749
+Validating_Accuracy: 0.8833151459693909
+Training_F1_Score: 0.9473656415939331
+Validating_F1_Score: 0.867857813835144
+Training_Precision: 0.9473644495010376
+Validating_Precision: 0.926164984703064
+Training_Recall: 0.9473690986633301
+Validating_Recall: 0.8833150863647461
+Training_AUROC: 0.9958057999610901
+Validating_AUROC: 0.9972134232521057
+Training Epochs:   3%|██▋                                                                                     | 3/100 [01:37<52:47, 32.66s/it]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 216, in <module>
+    running_loss += loss.item()
+KeyboardInterrupt

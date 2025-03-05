@@ -1,0 +1,44 @@
+Initializing SE-ResNet model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+test_dataset size: 9170
+validation_dataset size: 9170
+Set up the SE-ResNet model...
+Training started...
+Training batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:32<00:00,  8.78it/s]
+Validation batches: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  7.67it/s]
+Training batches:  23%|████████████████████████                                                                               | 67/287 [00:08<00:28,  7.80it/s]
+
+New best model found! Saving...
+Epoch: 1
+Training_Loss: 1.1496408199599395
+Validating_Loss: 0.5228091445234087
+Training_Accuracy: 0.6016221642494202
+Validating_Accuracy: 0.8360959887504578
+Training_F1_Score: 0.5918886661529541
+Validating_F1_Score: 0.8167861104011536
+Training_Precision: 0.6431886553764343
+Validating_Precision: 0.8411727547645569
+Training_Recall: 0.6016221046447754
+Validating_Recall: 0.8360959887504578
+Training_AUROC: 0.9171807169914246
+Validating_AUROC: 0.977401614189148
+Training Epochs:   1%|█                                                                                                      | 1/100 [00:46<1:16:00, 46.07s/it]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 187, in <module>
+    outputs, _ = model(waveform)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 184, in forward
+    replicas = self.replicate(self.module, self.device_ids[:len(inputs)])
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 189, in replicate
+    return replicate(module, device_ids, not torch.is_grad_enabled())
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/replicate.py", line 134, in replicate
+    replica = module._replicate_for_data_parallel()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 2525, in _replicate_for_data_parallel
+    replica.__dict__ = self.__dict__.copy()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1742, in __setattr__
+    buffers = self.__dict__.get('_buffers')
+KeyboardInterrupt

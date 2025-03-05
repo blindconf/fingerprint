@@ -1,0 +1,95 @@
+# Training Folder
+
+This folder contains scripts and utilities required for training deep learning models in this project. Below is an explanation of the key files and their purposes, as well as instructions for running the main training script.
+
+---
+
+## Folder Structure
+
+- `arguments.py`: Contains the argument parser details. However, arguments are temporarly handled using the `click` module in `train_model.py` due to a problem with using argparser module.
+- `invariables.py`: Includes constants in the project.
+- `loss_functions.py`: Defines the loss functions used in training. Includes:
+  - `vfd_loss_function`
+  - `non_vfd_loss_function`
+- `train_model.py`: The main training script. Run this file to train a model using the specified arguments.
+- `utility.py`: Contains utility functions used in `train_model.py`
+- `wandb/`: Directory for logging and monitoring training with Weights and Biases.
+
+---
+
+## Training Workflow
+
+### Key Features:
+- During training, models, optimizers, schedulers, performance scores, confusion matrices, and heatmaps are saved in the `trained_models/` directory, which is located at the sibling level to `src`.
+  - Example save path: `trained_models/<model_name>/<save_id>`
+- Logging provides detailed statistics and training settings.
+
+### How to Run the Training Script:
+
+Run the `train_model.py` file with the following arguments:
+
+```bash
+python train_model.py --model <model> \
+                      --classification_type <classification_type> \
+                      --performance_metric <performance_metric> \
+                      --save_id <save_id> \
+                      [--seed <seed>]
+```
+
+### Arguments:
+
+| Argument               | Type             | Description                                                      | Default         |
+|------------------------|------------------|------------------------------------------------------------------|-----------------|
+| `--model`              | `click.Choice`  | Model to train. Choices: `resnet`, `se-resnet`, `lcnn`, `x-vector`, `vfd-resnet`. | Required        |
+| `--classification_type`| `click.Choice`  | Type of classification. Choices: `multiclass`, `binary`.         | Required        |
+| `--performance_metric` | `click.Choice`  | Metric to evaluate performance. Choices: `accuracy`, `f1_score`, `precision`, `recall`, `auroc`. | Required |
+| `--save_id`            | `int`           | ID for saving the model.                                         | Required        |
+| `--seed`               | `int`           | Random seed for reproducibility.                                 | `40` (default)  |
+
+### Example:
+
+To train a `resnet` model for binary classification with accuracy as the performance metric and a save ID of 1:
+
+```bash
+python train_model.py --model resnet \
+                      --classification_type binary \
+                      --performance_metric accuracy \
+                      --save_id 1
+```
+
+---
+
+## File Details
+
+### `arguments.py`
+- Contains the argument parser but relies on the `click` module for handling arguments in `train_model.py`.
+
+### `invariables.py`
+- Stores constants like:
+  - Dataset paths.
+  - Mean and standard deviation values for feature normalization.
+  - `torch.device` for specifying the computation device and device ids.
+
+### `loss_functions.py`
+- Defines:
+  - `vfd_loss_function`: Used exclusively with the `vfd-resnet` model and combines CrossEntropyLoss and contrastive loss.
+  - `non_vfd_loss_function`: Used for all other models in the project, using CrossEntropyLoss.
+
+### `train_model.py`
+- The main training script. Implements the training pipeline and saves all relevant outputs (models, performance metrics, visualizations, etc.).
+- Leverages utilities and arguments defined in other files.
+
+### `utility.py`
+- Includes helper functions for:
+  - Retrieving the appropriate model architecture.
+  - Preparing data loaders.
+  - Saving model checkpoints and results.
+
+---
+
+## Notes
+
+- **Logging**: During training, detailed logs are created to monitor statistics and settings.
+- **Output Location**: Results are saved in the `trained_models/` directory.
+- **wandb plots** : Scores can be followed at real time. Follow the link in the lo, as the training starts
+

@@ -1,0 +1,74 @@
+Initializing SE-ResNet model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+validation_dataset size: 9170
+test_dataset size: 9170
+Set up the SE-ResNet model...
+Training started...
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:31<00:00,  9.22it/s]
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  8.08it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:26<00:00, 11.01it/s]
+
+New best model found! Saving...
+Epoch: 1
+Training_Loss: 1.1515096482084188
+Validating_Loss: 0.8295660399728351
+Training_Accuracy: 0.5388495326042175
+Validating_Accuracy: 0.6688113212585449
+Training_F1_Score: 0.5143644213676453
+Validating_F1_Score: 0.6212919354438782
+Training_Precision: 0.6726617813110352
+Validating_Precision: 0.6609340906143188
+Training_Recall: 0.5388494729995728
+Validating_Recall: 0.6688113212585449
+Training_AUROC: 0.9173838496208191
+Validating_AUROC: 0.9460943341255188
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00,  9.24it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:26<00:00, 10.95it/s]
+
+New best model found! Saving...
+Epoch: 2
+Training_Loss: 0.3495049922619963
+Validating_Loss: 0.23902735859155655
+Training_Accuracy: 0.8540349006652832
+Validating_Accuracy: 0.8977099061012268
+Training_F1_Score: 0.8528066277503967
+Validating_F1_Score: 0.8973227739334106
+Training_Precision: 0.854015052318573
+Validating_Precision: 0.8970997333526611
+Training_Recall: 0.8540349006652832
+Validating_Recall: 0.8977099657058716
+Training_AUROC: 0.9784480929374695
+Validating_AUROC: 0.9867131114006042
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00,  9.43it/s]
+Training batches:  27%|███████████████████████                                                               | 77/287 [00:08<00:24,  8.64it/s]
+Epoch: 3
+Training_Loss: 0.1591370760200331
+Validating_Loss: 0.8510097331470914
+Training_Accuracy: 0.9353189468383789
+Validating_Accuracy: 0.7846238017082214
+Training_F1_Score: 0.9352913498878479
+Validating_F1_Score: 0.7460503578186035
+Training_Precision: 0.9352678656578064
+Validating_Precision: 0.8354171514511108
+Training_Recall: 0.9353189468383789
+Validating_Recall: 0.7846237421035767
+Training_AUROC: 0.9941061735153198
+Validating_AUROC: 0.9684411883354187
+Training Epochs:   3%|██▋                                                                                     | 3/100 [01:44<56:23, 34.88s/it]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 208, in <module>
+    outputs, _ = model(waveform)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 184, in forward
+    replicas = self.replicate(self.module, self.device_ids[:len(inputs)])
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 189, in replicate
+    return replicate(module, device_ids, not torch.is_grad_enabled())
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/replicate.py", line 127, in replicate
+    modules = list(network.modules())
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 2332, in modules
+    for _, module in self.named_modules():
+KeyboardInterrupt

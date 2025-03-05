@@ -1,0 +1,17 @@
+{"time":"2025-01-24T00:09:14.807319111+01:00","level":"INFO","msg":"stream: starting","core version":"0.19.4","symlink path":"/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250124_000914-qk11tbr3/logs/debug-core.log"}
+{"time":"2025-01-24T00:09:17.119736014+01:00","level":"INFO","msg":"created new stream","id":"qk11tbr3"}
+{"time":"2025-01-24T00:09:17.119777142+01:00","level":"INFO","msg":"stream: started","id":"qk11tbr3"}
+{"time":"2025-01-24T00:09:17.119842065+01:00","level":"INFO","msg":"writer: Do: started","stream_id":"qk11tbr3"}
+{"time":"2025-01-24T00:09:17.119864298+01:00","level":"INFO","msg":"handler: started","stream_id":"qk11tbr3"}
+{"time":"2025-01-24T00:09:17.119963917+01:00","level":"INFO","msg":"sender: started","stream_id":"qk11tbr3"}
+{"time":"2025-01-24T00:09:17.357678045+01:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-24T00:45:32.463062652+01:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded"}
+{"time":"2025-01-24T00:57:09.325476529+01:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-24T00:57:09.32628362+01:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-24T00:57:10.326017954+01:00","level":"INFO","msg":"handler: operation stats","stats":{"operations":[{"desc":"uploading output.log","runtime_seconds":0.67307804,"progress":"113.0KB/113.0KB"},{"desc":"uploading config.yaml","runtime_seconds":0.530465101,"progress":"796B/796B"}],"total_operations":2}}
+{"time":"2025-01-24T00:57:10.613010932+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-24T00:57:11.975885169+01:00","level":"INFO","msg":"stream: closing","id":"qk11tbr3"}
+{"time":"2025-01-24T00:57:11.975912601+01:00","level":"INFO","msg":"handler: closed","stream_id":"qk11tbr3"}
+{"time":"2025-01-24T00:57:11.975927319+01:00","level":"INFO","msg":"writer: Close: closed","stream_id":"qk11tbr3"}
+{"time":"2025-01-24T00:57:11.975984688+01:00","level":"INFO","msg":"sender: closed","stream_id":"qk11tbr3"}
+{"time":"2025-01-24T00:57:11.97604386+01:00","level":"INFO","msg":"stream: closed","id":"qk11tbr3"}
