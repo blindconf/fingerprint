@@ -10,10 +10,13 @@ python run_modelattribution.py --real-data-path ... --fake-data-path ... --corpu
 ```
 
 ### Running the Closed-World setting
-To compute the closed-world setting choose one model to train the classifier within x-vector, vfd-resnet, se-resnet, resnet, lcnn, and fingerprints
+To compute in a closed-world setting, select one model from x-vector, vfd-resnet, se-resnet, resnet, lcnn, and fingerprints to train the classifier.
 
 #### Multiclass classifier
+```
 python src/training/train_model.py --model ... --classification_type multiclass-10 --seed 80
-
+```
 #### Binary classifier
+```
 python src/training/train_model.py --model ... --classification_type binary-10 --seed 80
+```
