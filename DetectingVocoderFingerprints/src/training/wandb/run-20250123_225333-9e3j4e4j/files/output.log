@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 79, in <module>
+    os.makedirs(url_dir_to_save_model)
+  File "/opt/anaconda3/lib/python3.9/os.py", line 225, in makedirs
+    mkdir(name, mode)
+FileExistsError: [Errno 17] File exists: '/home/hessos4l/Downloads/DetectingVocoderFingerprints/trained_models/LCNN/40'

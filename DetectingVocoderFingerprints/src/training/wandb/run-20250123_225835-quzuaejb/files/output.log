@@ -1,0 +1,32 @@
+Initializing LCNN model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+validation_dataset size: 9170
+test_dataset size: 9170
+Set up the LCNN model...
+Training started...
+Training batches:   0%|                                                                                               | 0/287 [00:02<?, ?it/s]
+Training Epochs:   0%|                                                                                                | 0/100 [00:02<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 219, in <module>
+    outputs, _ = model(waveform)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 171, in forward
+    raise RuntimeError("module must have its parameters and buffers "
+RuntimeError: module must have its parameters and buffers on device cuda:0 (device_ids[0]) but found one of them on device: cuda:1
+Error in atexit._run_exitfuncs:
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1472, in _clean_up_worker
+    w.join(timeout=_utils.MP_STATUS_CHECK_INTERVAL)
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/popen_fork.py", line 40, in wait
+    if not wait([self.sentinel], timeout):
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/connection.py", line 931, in wait
+    ready = selector.select(timeout)
+  File "/opt/anaconda3/lib/python3.9/selectors.py", line 416, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt

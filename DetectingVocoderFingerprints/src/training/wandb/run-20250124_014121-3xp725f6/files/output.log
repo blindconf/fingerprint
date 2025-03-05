@@ -1,0 +1,8 @@
+Initializing SE-ResNet model training...
+Loading WaveFake dataset...
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 76, in <module>
+    fake_audio_dataset = WaveFakeDataset(args.model, "LFCC", '/home/hessos4l/Downloads/DetectingVocoderFingerprints/datasets/WaveFake/csv_files')
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/datasets/wave_fake_dataset.py", line 20, in __init__
+    sample_rate=self.target_sample_rate,
+AttributeError: 'WaveFakeDataset' object has no attribute 'target_sample_rate'

@@ -1,0 +1,63 @@
+Initializing LCNN model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+validation_dataset size: 9170
+test_dataset size: 9170
+Set up the LCNN model...
+Training started...
+Training batches:   0%|                                                                                               | 0/287 [00:04<?, ?it/s]
+Training Epochs:   0%|                                                                                                | 0/100 [00:04<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 219, in <module>
+    outputs, _ = model(waveform)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 185, in forward
+    outputs = self.parallel_apply(replicas, inputs, module_kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 200, in parallel_apply
+    return parallel_apply(replicas, inputs, kwargs, self.device_ids[:len(replicas)])
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/parallel_apply.py", line 110, in parallel_apply
+    output.reraise()
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/_utils.py", line 694, in reraise
+    raise exception
+torch.cuda.OutOfMemoryError: Caught OutOfMemoryError in replica 2 on device 0.
+Original Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/parallel_apply.py", line 85, in _worker
+    output = module(*input, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/models/lcnn_model.py", line 55, in forward
+    x = self.lcnn(x)  # Extract features
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/container.py", line 215, in forward
+    input = module(input)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/conv.py", line 460, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/conv.py", line 456, in _conv_forward
+    return F.conv2d(input, weight, bias, self.stride,
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.22 GiB. GPU 0 has a total capacty of 23.60 GiB of which 897.19 MiB is free. Process 2613701 has 22.31 GiB memory in use. Including non-PyTorch memory, this process has 386.00 MiB memory in use. Of the allocated memory 32.35 MiB is allocated by PyTorch, and 3.65 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+
+Error in atexit._run_exitfuncs:
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1472, in _clean_up_worker
+    w.join(timeout=_utils.MP_STATUS_CHECK_INTERVAL)
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/popen_fork.py", line 40, in wait
+    if not wait([self.sentinel], timeout):
+  File "/opt/anaconda3/lib/python3.9/multiprocessing/connection.py", line 931, in wait
+    ready = selector.select(timeout)
+  File "/opt/anaconda3/lib/python3.9/selectors.py", line 416, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt

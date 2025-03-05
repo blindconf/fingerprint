@@ -1,0 +1,463 @@
+Initializing LCNN model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+validation_dataset size: 9170
+test_dataset size: 9170
+Set up the LCNN model...
+Training started...
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:11<00:00,  4.04it/s]
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00,  9.46it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.16it/s]
+
+New best model found! Saving...
+Epoch: 1
+Training_Loss: 2.8295675833881524
+Validating_Loss: 0.7717153082291285
+Training_Accuracy: 0.3434433043003082
+Validating_Accuracy: 0.6653217077255249
+Training_F1_Score: 0.3390132784843445
+Validating_F1_Score: 0.6531959772109985
+Training_Precision: 0.33786624670028687
+Validating_Precision: 0.7083856463432312
+Training_Recall: 0.34344327449798584
+Validating_Recall: 0.6653217077255249
+Training_AUROC: 0.7596690654754639
+Validating_AUROC: 0.9546168446540833
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.42it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.19it/s]
+
+New best model found! Saving...
+Epoch: 2
+Training_Loss: 0.7266164679560512
+Validating_Loss: 0.36257045716047287
+Training_Accuracy: 0.6743729710578918
+Validating_Accuracy: 0.8229007720947266
+Training_F1_Score: 0.6727167367935181
+Validating_F1_Score: 0.8191182613372803
+Training_Precision: 0.6719750165939331
+Validating_Precision: 0.8267271518707275
+Training_Recall: 0.6743729114532471
+Validating_Recall: 0.8229007720947266
+Training_AUROC: 0.9465392231941223
+Validating_AUROC: 0.9768899083137512
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.35it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+Epoch: 3
+Training_Loss: 0.47589602703001443
+Validating_Loss: 0.3097252945105235
+Training_Accuracy: 0.7762813568115234
+Validating_Accuracy: 0.8412213921546936
+Training_F1_Score: 0.7758406400680542
+Validating_F1_Score: 0.8116048574447632
+Training_Precision: 0.7756061553955078
+Validating_Precision: 0.8723370432853699
+Training_Recall: 0.7762813568115234
+Validating_Recall: 0.8412214517593384
+Training_AUROC: 0.9703423976898193
+Validating_AUROC: 0.9848690629005432
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.58it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+
+New best model found! Saving...
+Epoch: 4
+Training_Loss: 0.370131483995956
+Validating_Loss: 0.25378120359447265
+Training_Accuracy: 0.8248773217201233
+Validating_Accuracy: 0.8704470992088318
+Training_F1_Score: 0.8247001767158508
+Validating_F1_Score: 0.8556842803955078
+Training_Precision: 0.8246302604675293
+Validating_Precision: 0.8972129821777344
+Training_Recall: 0.8248772621154785
+Validating_Recall: 0.8704471588134766
+Training_AUROC: 0.9781918525695801
+Validating_AUROC: 0.9888968467712402
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.09it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+
+New best model found! Saving...
+Epoch: 5
+Training_Loss: 0.31578225645038727
+Validating_Loss: 0.17877797244323623
+Training_Accuracy: 0.8521810173988342
+Validating_Accuracy: 0.9057797193527222
+Training_F1_Score: 0.8520317077636719
+Validating_F1_Score: 0.8988799452781677
+Training_Precision: 0.8519613742828369
+Validating_Precision: 0.9291596412658691
+Training_Recall: 0.8521810173988342
+Validating_Recall: 0.9057797193527222
+Training_AUROC: 0.983074963092804
+Validating_AUROC: 0.9938703179359436
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.89it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.18it/s]
+
+New best model found! Saving...
+Epoch: 6
+Training_Loss: 0.23831988554382988
+Validating_Loss: 0.125562842314442
+Training_Accuracy: 0.8942611813545227
+Validating_Accuracy: 0.9598691463470459
+Training_F1_Score: 0.8941773772239685
+Validating_F1_Score: 0.959666907787323
+Training_Precision: 0.894183874130249
+Validating_Precision: 0.9624524116516113
+Training_Recall: 0.8942612409591675
+Validating_Recall: 0.9598691463470459
+Training_AUROC: 0.989630401134491
+Validating_AUROC: 0.9984629154205322
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.27it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.19it/s]
+
+New best model found! Saving...
+Epoch: 7
+Training_Loss: 0.16050128016997298
+Validating_Loss: 0.05943913623276684
+Training_Accuracy: 0.936423122882843
+Validating_Accuracy: 0.9786259531974792
+Training_F1_Score: 0.9364129304885864
+Validating_F1_Score: 0.9785573482513428
+Training_Precision: 0.9364158511161804
+Validating_Precision: 0.9804906845092773
+Training_Recall: 0.936423122882843
+Validating_Recall: 0.9786259531974792
+Training_AUROC: 0.9959564208984375
+Validating_AUROC: 0.9997634887695312
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.62it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+
+New best model found! Saving...
+Epoch: 8
+Training_Loss: 0.12483178415313
+Validating_Loss: 0.03565511433407664
+Training_Accuracy: 0.9536804556846619
+Validating_Accuracy: 0.9888767600059509
+Training_F1_Score: 0.9536760449409485
+Validating_F1_Score: 0.9888695478439331
+Training_Precision: 0.9536726474761963
+Validating_Precision: 0.9893202781677246
+Training_Recall: 0.9536805152893066
+Validating_Recall: 0.9888768196105957
+Training_AUROC: 0.9979009628295898
+Validating_AUROC: 0.9998775720596313
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.47it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.20it/s]
+
+New best model found! Saving...
+Epoch: 9
+Training_Loss: 0.10481648503410068
+Validating_Loss: 0.02741090249684122
+Training_Accuracy: 0.9654171466827393
+Validating_Accuracy: 0.9916030764579773
+Training_F1_Score: 0.9654250144958496
+Validating_F1_Score: 0.9916022419929504
+Training_Precision: 0.9654388427734375
+Validating_Precision: 0.991787314414978
+Training_Recall: 0.9654171466827393
+Validating_Recall: 0.9916030764579773
+Training_AUROC: 0.9986782670021057
+Validating_AUROC: 0.9999428391456604
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.15it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.20it/s]
+
+New best model found! Saving...
+Epoch: 10
+Training_Loss: 0.06774753832845634
+Validating_Loss: 0.020368829602375627
+Training_Accuracy: 0.9765267372131348
+Validating_Accuracy: 0.9943293333053589
+Training_F1_Score: 0.9765284061431885
+Validating_F1_Score: 0.9943285584449768
+Training_Precision: 0.9765310883522034
+Validating_Precision: 0.994378924369812
+Training_Recall: 0.9765267372131348
+Validating_Recall: 0.9943293333053589
+Training_AUROC: 0.9993909001350403
+Validating_AUROC: 0.9999656677246094
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.97it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.19it/s]
+
+New best model found! Saving...
+Epoch: 11
+Training_Loss: 0.05491665223911924
+Validating_Loss: 0.012293159670662135
+Training_Accuracy: 0.980902373790741
+Validating_Accuracy: 0.99651038646698
+Training_F1_Score: 0.9809025526046753
+Validating_F1_Score: 0.9965091943740845
+Training_Precision: 0.980903148651123
+Validating_Precision: 0.9965171813964844
+Training_Recall: 0.980902373790741
+Validating_Recall: 0.99651038646698
+Training_AUROC: 0.9996263980865479
+Validating_AUROC: 0.9999749660491943
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.90it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+Epoch: 12
+Training_Loss: 0.051262277106264485
+Validating_Loss: 0.01154676619787804
+Training_Accuracy: 0.9828516840934753
+Validating_Accuracy: 0.9960741400718689
+Training_F1_Score: 0.9828529953956604
+Validating_F1_Score: 0.9960729479789734
+Training_Precision: 0.9828555583953857
+Validating_Precision: 0.9961050748825073
+Training_Recall: 0.9828516840934753
+Validating_Recall: 0.9960741996765137
+Training_AUROC: 0.999688446521759
+Validating_AUROC: 0.9999886751174927
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.96it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.16it/s]
+Epoch: 13
+Training_Loss: 0.04243812100549686
+Validating_Loss: 0.0172900337266684
+Training_Accuracy: 0.985755205154419
+Validating_Accuracy: 0.9947655200958252
+Training_F1_Score: 0.9857542514801025
+Validating_F1_Score: 0.9947634935379028
+Training_Precision: 0.9857542514801025
+Validating_Precision: 0.9948092699050903
+Training_Recall: 0.985755205154419
+Validating_Recall: 0.9947655200958252
+Training_AUROC: 0.999783992767334
+Validating_AUROC: 0.9999752640724182
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.91it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.19it/s]
+
+New best model found! Saving...
+Epoch: 14
+Training_Loss: 0.036385433795011704
+Validating_Loss: 0.010997655077113045
+Training_Accuracy: 0.987868070602417
+Validating_Accuracy: 0.9974918365478516
+Training_F1_Score: 0.9878686666488647
+Validating_F1_Score: 0.9974926710128784
+Training_Precision: 0.9878697991371155
+Validating_Precision: 0.9974998831748962
+Training_Recall: 0.9878680109977722
+Validating_Recall: 0.9974918365478516
+Training_AUROC: 0.9998489618301392
+Validating_AUROC: 0.9999935030937195
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.26it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.18it/s]
+Epoch: 15
+Training_Loss: 0.029372704668840205
+Validating_Loss: 0.010333157011902787
+Training_Accuracy: 0.9903625845909119
+Validating_Accuracy: 0.9969465732574463
+Training_F1_Score: 0.9903629422187805
+Validating_F1_Score: 0.9969468116760254
+Training_Precision: 0.9903634190559387
+Validating_Precision: 0.9969558715820312
+Training_Recall: 0.9903625845909119
+Validating_Recall: 0.9969465732574463
+Training_AUROC: 0.9998908638954163
+Validating_AUROC: 0.9999892711639404
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.01it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.18it/s]
+
+New best model found! Saving...
+Epoch: 16
+Training_Loss: 0.03378133790892831
+Validating_Loss: 0.005756542527605133
+Training_Accuracy: 0.989612877368927
+Validating_Accuracy: 0.9979280233383179
+Training_F1_Score: 0.9896129369735718
+Validating_F1_Score: 0.997928261756897
+Training_Precision: 0.9896131753921509
+Validating_Precision: 0.9979326128959656
+Training_Recall: 0.989612877368927
+Validating_Recall: 0.9979280829429626
+Training_AUROC: 0.9998558759689331
+Validating_AUROC: 0.9999951124191284
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.58it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.18it/s]
+
+New best model found! Saving...
+Epoch: 17
+Training_Loss: 0.023786653852972888
+Validating_Loss: 0.007421287866438636
+Training_Accuracy: 0.9921755790710449
+Validating_Accuracy: 0.998146116733551
+Training_F1_Score: 0.992175817489624
+Validating_F1_Score: 0.9981461763381958
+Training_Precision: 0.9921764731407166
+Validating_Precision: 0.9981482028961182
+Training_Recall: 0.9921755790710449
+Validating_Recall: 0.998146116733551
+Training_AUROC: 0.9999251365661621
+Validating_AUROC: 0.9999940395355225
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.93it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.20it/s]
+Epoch: 18
+Training_Loss: 0.027405639246689442
+Validating_Loss: 0.01201992958279637
+Training_Accuracy: 0.9917393922805786
+Validating_Accuracy: 0.996292233467102
+Training_F1_Score: 0.9917390942573547
+Validating_F1_Score: 0.9962918758392334
+Training_Precision: 0.99173903465271
+Validating_Precision: 0.9963396191596985
+Training_Recall: 0.9917393922805786
+Validating_Recall: 0.996292233467102
+Training_AUROC: 0.9999094605445862
+Validating_AUROC: 0.9999901056289673
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.13it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+Epoch: 19
+Training_Loss: 0.024130193405114974
+Validating_Loss: 0.005340174252827031
+Training_Accuracy: 0.9923255443572998
+Validating_Accuracy: 0.9979280233383179
+Training_F1_Score: 0.9923259019851685
+Validating_F1_Score: 0.9979277849197388
+Training_Precision: 0.9923269748687744
+Validating_Precision: 0.9979292750358582
+Training_Recall: 0.992325484752655
+Validating_Recall: 0.9979280233383179
+Training_AUROC: 0.9999281764030457
+Validating_AUROC: 0.9999977350234985
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.21it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.19it/s]
+Epoch: 20
+Training_Loss: 0.019999889822524465
+Validating_Loss: 0.005611469549168962
+Training_Accuracy: 0.9935250878334045
+Validating_Accuracy: 0.9980370998382568
+Training_F1_Score: 0.9935251474380493
+Validating_F1_Score: 0.9980372190475464
+Training_Precision: 0.9935253858566284
+Validating_Precision: 0.9980472326278687
+Training_Recall: 0.9935250282287598
+Validating_Recall: 0.9980370998382568
+Training_AUROC: 0.999952495098114
+Validating_AUROC: 0.9999966621398926
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.81it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.18it/s]
+Epoch: 21
+Training_Loss: 0.023466177619208797
+Validating_Loss: 0.006026995285032576
+Training_Accuracy: 0.9928571581840515
+Validating_Accuracy: 0.9977099299430847
+Training_F1_Score: 0.9928573369979858
+Validating_F1_Score: 0.997710108757019
+Training_Precision: 0.992857813835144
+Validating_Precision: 0.997715950012207
+Training_Recall: 0.9928572177886963
+Validating_Recall: 0.9977099895477295
+Training_AUROC: 0.9999352097511292
+Validating_AUROC: 0.9999945759773254
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.10it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+Epoch: 22
+Training_Loss: 0.018604132553577936
+Validating_Loss: 0.009797246997348137
+Training_Accuracy: 0.9943429827690125
+Validating_Accuracy: 0.9970555901527405
+Training_F1_Score: 0.9943431615829468
+Validating_F1_Score: 0.9970566034317017
+Training_Precision: 0.9943435192108154
+Validating_Precision: 0.9970800280570984
+Training_Recall: 0.9943429827690125
+Validating_Recall: 0.9970556497573853
+Training_AUROC: 0.9999515414237976
+Validating_AUROC: 0.9999966621398926
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.49it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.18it/s]
+
+New best model found! Saving...
+Epoch: 23
+Training_Loss: 0.020403409415579367
+Validating_Loss: 0.0048796141175747225
+Training_Accuracy: 0.9941112399101257
+Validating_Accuracy: 0.99825519323349
+Training_F1_Score: 0.9941112995147705
+Validating_F1_Score: 0.9982552528381348
+Training_Precision: 0.9941120743751526
+Validating_Precision: 0.9982591867446899
+Training_Recall: 0.9941112399101257
+Validating_Recall: 0.9982552528381348
+Training_AUROC: 0.9999433755874634
+Validating_AUROC: 0.999997615814209
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.07it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.17it/s]
+Epoch: 24
+Training_Loss: 0.0176500215935822
+Validating_Loss: 0.007505230870164168
+Training_Accuracy: 0.9946700930595398
+Validating_Accuracy: 0.9979280233383179
+Training_F1_Score: 0.9946701526641846
+Validating_F1_Score: 0.9979280233383179
+Training_Precision: 0.9946703910827637
+Validating_Precision: 0.997929573059082
+Training_Recall: 0.9946701526641846
+Validating_Recall: 0.9979280233383179
+Training_AUROC: 0.9999614953994751
+Validating_AUROC: 0.999990701675415
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 10.99it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.16it/s]
+Epoch: 25
+Training_Loss: 0.016227028532371894
+Validating_Loss: 0.0104162857872628
+Training_Accuracy: 0.995256245136261
+Validating_Accuracy: 0.9959651231765747
+Training_F1_Score: 0.9952563643455505
+Validating_F1_Score: 0.9959636926651001
+Training_Precision: 0.9952567219734192
+Validating_Precision: 0.9959977269172668
+Training_Recall: 0.9952563047409058
+Validating_Recall: 0.9959651231765747
+Training_AUROC: 0.9999638199806213
+Validating_AUROC: 0.9999943971633911
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.27it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.18it/s]
+Epoch: 26
+Training_Loss: 0.017490620428697493
+Validating_Loss: 0.005356558718227057
+Training_Accuracy: 0.9945610761642456
+Validating_Accuracy: 0.9979280233383179
+Training_F1_Score: 0.994560956954956
+Validating_F1_Score: 0.997927725315094
+Training_Precision: 0.9945610761642456
+Validating_Precision: 0.9979367852210999
+Training_Recall: 0.9945610761642456
+Validating_Recall: 0.9979280233383179
+Training_AUROC: 0.9999621510505676
+Validating_AUROC: 0.9999967217445374
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.48it/s]
+Training batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 287/287 [01:08<00:00,  4.19it/s]
+Epoch: 27
+Training_Loss: 0.015803219740484268
+Validating_Loss: 0.0045977292308331625
+Training_Accuracy: 0.9948745965957642
+Validating_Accuracy: 0.99825519323349
+Training_F1_Score: 0.9948745965957642
+Validating_F1_Score: 0.9982552528381348
+Training_Precision: 0.9948747158050537
+Validating_Precision: 0.9982571601867676
+Training_Recall: 0.9948745369911194
+Validating_Recall: 0.99825519323349
+Training_AUROC: 0.9999716281890869
+Validating_AUROC: 0.9999979734420776
+Validation batches: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00, 11.09it/s]
+Training batches:  52%|██████████████████████████████████████████████████████████████▏                                                        | 150/287 [00:36<00:33,  4.08it/s]
+
+New best model found! Saving...
+Epoch: 28
+Training_Loss: 0.015938635218711767
+Validating_Loss: 0.005287388020305015
+Training_Accuracy: 0.9952698945999146
+Validating_Accuracy: 0.9985823631286621
+Training_F1_Score: 0.9952700138092041
+Validating_F1_Score: 0.9985824227333069
+Training_Precision: 0.9952703714370728
+Validating_Precision: 0.9985845685005188
+Training_Recall: 0.9952698945999146
+Validating_Recall: 0.9985823631286621
+Training_AUROC: 0.999969482421875
+Validating_AUROC: 0.9999985694885254
+Training Epochs:  28%|███████████████████████▊                                                             | 28/100 [34:14<1:28:03, 73.38s/it]| 150/287 [00:36<00:32,  4.27it/s]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 226, in <module>
+    running_loss += loss.item()
+KeyboardInterrupt

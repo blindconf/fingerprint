@@ -1,0 +1,30 @@
+Initializing LCNN model training...
+Loading WaveFake dataset...
+training_dataset size: 73360
+validation_dataset size: 9170
+test_dataset size: 9170
+Set up the LCNN model...
+Training started...
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [02:10<00:00,  2.20it/s]
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  8.09it/s]
+Training batches:  77%|█████████████████████████████████████████████████████████████████▋                   | 222/287 [01:40<00:29,  2.21it/s]
+
+New best model found! Saving...
+Epoch: 1
+Training_Loss: 3.25764274846386
+Validating_Loss: 1.1247471537854936
+Training_Accuracy: 0.24562431871891022
+Validating_Accuracy: 0.5415485501289368
+Training_F1_Score: 0.23689834773540497
+Validating_F1_Score: 0.5262746810913086
+Training_Precision: 0.23818758130073547
+Validating_Precision: 0.5449863076210022
+Training_Recall: 0.24562431871891022
+Validating_Recall: 0.5415485501289368
+Training_AUROC: 0.6623854637145996
+Validating_AUROC: 0.9047162532806396
+Training Epochs:   1%|▊                                                                                    | 1/100 [03:55<6:28:01, 235.17s/it]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 226, in <module>
+    running_loss += loss.item()
+KeyboardInterrupt

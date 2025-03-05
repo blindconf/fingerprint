@@ -1,0 +1,20 @@
+{
+  "os": "Linux-5.4.0-200-generic-x86_64-with-glibc2.31",
+  "python": "CPython 3.9.21",
+  "startedAt": "2025-01-23T21:01:42.937804Z",
+  "args": [
+    "--model",
+    "X-vector",
+    "--classification_type",
+    "Multi_class",
+    "--save_id",
+    "40"
+  ],
+  "program": "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py",
+  "codePath": "train_model.py",
+  "email": "shosh.hs1999@gmail.com",
+  "root": "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training",
+  "host": "cuda02",
+  "executable": "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/bin/python",
+  "codePathLocal": "train_model.py"
+}

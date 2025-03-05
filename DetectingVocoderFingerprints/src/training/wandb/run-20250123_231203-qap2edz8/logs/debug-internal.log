@@ -1,0 +1,16 @@
+{"time":"2025-01-23T23:12:03.806494363+01:00","level":"INFO","msg":"stream: starting","core version":"0.19.4","symlink path":"/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/wandb/run-20250123_231203-qap2edz8/logs/debug-core.log"}
+{"time":"2025-01-23T23:12:06.121755215+01:00","level":"INFO","msg":"created new stream","id":"qap2edz8"}
+{"time":"2025-01-23T23:12:06.121793949+01:00","level":"INFO","msg":"stream: started","id":"qap2edz8"}
+{"time":"2025-01-23T23:12:06.121845296+01:00","level":"INFO","msg":"writer: Do: started","stream_id":"qap2edz8"}
+{"time":"2025-01-23T23:12:06.121872818+01:00","level":"INFO","msg":"sender: started","stream_id":"qap2edz8"}
+{"time":"2025-01-23T23:12:06.121894099+01:00","level":"INFO","msg":"handler: started","stream_id":"qap2edz8"}
+{"time":"2025-01-23T23:12:06.378354746+01:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-23T23:36:36.472449958+01:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-01-23T23:46:28.315954987+01:00","level":"INFO","msg":"stream: closing","id":"qap2edz8"}
+{"time":"2025-01-23T23:46:28.315991245+01:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-23T23:46:28.316908966+01:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-23T23:46:28.866380522+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-23T23:46:29.23213082+01:00","level":"INFO","msg":"handler: closed","stream_id":"qap2edz8"}
+{"time":"2025-01-23T23:46:29.23218856+01:00","level":"INFO","msg":"sender: closed","stream_id":"qap2edz8"}
+{"time":"2025-01-23T23:46:29.232180885+01:00","level":"INFO","msg":"writer: Close: closed","stream_id":"qap2edz8"}
+{"time":"2025-01-23T23:46:29.232289391+01:00","level":"INFO","msg":"stream: closed","id":"qap2edz8"}

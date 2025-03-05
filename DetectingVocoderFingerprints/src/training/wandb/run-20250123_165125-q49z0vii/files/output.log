@@ -1,0 +1,37 @@
+Initializing ResNet model training...
+Loading WaveFake dataset...
+Set up the model...
+Training started...
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:32<00:00,  8.96it/s]
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  7.91it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.38it/s]
+
+New best model found! Saving...
+{'Epoch': 1, 'Training_Loss': 1.0240322783433602, 'Validating_Loss': 0.3300203200843599, 'Training_Accuracy': 0.6036396026611328, 'Validating_Accuracy': 0.8732824325561523, 'Training_F1_Score': 0.5943658947944641, 'Validating_F1_Score': 0.8716317415237427, 'Training_Precision': 0.6223968267440796, 'Validating_Precision': 0.8736742734909058, 'Training_Recall': 0.6036396026611328, 'Validating_Recall': 0.8732824325561523, 'Training_AUROC': 0.9221430420875549, 'Validating_AUROC': 0.9809823036193848}
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:03<00:00,  9.47it/s]
+Training batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 287/287 [00:25<00:00, 11.27it/s]
+
+New best model found! Saving...
+{'Epoch': 2, 'Training_Loss': 0.22405730810937982, 'Validating_Loss': 0.48621873888704514, 'Training_Accuracy': 0.9104007482528687, 'Validating_Accuracy': 0.8129770755767822, 'Training_F1_Score': 0.9103025197982788, 'Validating_F1_Score': 0.7840359210968018, 'Training_Precision': 0.9102914333343506, 'Validating_Precision': 0.8567157983779907, 'Training_Recall': 0.9104007482528687, 'Validating_Recall': 0.8129770755767822, 'Training_AUROC': 0.9899965524673462, 'Validating_AUROC': 0.9859220385551453}
+Validation batches: 100%|█████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:04<00:00,  8.97it/s]
+Training batches:  57%|████████████████████████████████████████████████▌                                    | 164/287 [00:15<00:11, 10.53it/s]
+{'Epoch': 3, 'Training_Loss': 0.11984217486211232, 'Validating_Loss': 0.12217768995712201, 'Training_Accuracy': 0.9535850882530212, 'Validating_Accuracy': 0.9496183395385742, 'Training_F1_Score': 0.9535976052284241, 'Validating_F1_Score': 0.9491572380065918, 'Training_Precision': 0.953613817691803, 'Validating_Precision': 0.9565644264221191, 'Training_Recall': 0.9535850286483765, 'Validating_Recall': 0.9496182799339294, 'Training_AUROC': 0.9966776967048645, 'Validating_AUROC': 0.9980294704437256}
+Training Epochs:   3%|██▌                                                                                   | 3/100 [01:52<1:00:53, 37.66s/it]
+Traceback (most recent call last):
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/src/training/train_model.py", line 185, in <module>
+    outputs, _ = model(waveform)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 185, in forward
+    outputs = self.parallel_apply(replicas, inputs, module_kwargs)
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/data_parallel.py", line 200, in parallel_apply
+    return parallel_apply(replicas, inputs, kwargs, self.device_ids[:len(replicas)])
+  File "/home/hessos4l/Downloads/DetectingVocoderFingerprints/myenv/lib/python3.9/site-packages/torch/nn/parallel/parallel_apply.py", line 102, in parallel_apply
+    thread.join()
+  File "/opt/anaconda3/lib/python3.9/threading.py", line 1060, in join
+    self._wait_for_tstate_lock()
+  File "/opt/anaconda3/lib/python3.9/threading.py", line 1080, in _wait_for_tstate_lock
+    if lock.acquire(block, timeout):
+KeyboardInterrupt
