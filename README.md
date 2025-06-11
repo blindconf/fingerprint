@@ -16,7 +16,6 @@ This paper [Exposing Synthetic Speech: Model Attribution and Detection of AI-gen
 > Due to its simplicity, efficiency, and strong generalization across speech synthesis systems and languages, this technique offers a practical tool for digital forensics and security applications.
 
 ### Computing Fingerprints and running the Open-world setting
-Test
 To compute the fingerprints run the script as follows:
 #### Low-pass-filter
 ```
