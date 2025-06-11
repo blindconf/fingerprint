@@ -3,7 +3,7 @@
 We propose a simple, training-free method for detecting AI-generated speech and attributing it to its source model by leveraging standardized average residuals as distinctive fingerprints. 
 Our approach effectively addresses single-model attribution, multi-model attribution, and synthetic versus real speech detection, achieving high accuracy and robustness across diverse speech synthesis systems.
 
-![logo](resources/single_model.pdf) 
+![logo](resources/single_model.png) 
 
 This paper [Exposing Synthetic Speech: Model Attribution and Detection of AI-generated Speech via Audio Fingerprints](https://github.com/blindconf/fingerprint) is currently under revision to ACSAC 2025. A demo with a selection of fake audio samples from different AI-Generated models employed in our experiments is available online: [Fingerprint Demo](https://blindconf.github.io/fingerprint_demo/).
 > As speech generation technologies continue to advance in quality and accessibility, the risk of malicious use cases, including impersonation, misinformation, and spoofing, increases rapidly.
