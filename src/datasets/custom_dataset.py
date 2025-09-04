@@ -9,11 +9,12 @@ from torchaudio.transforms import LFCC, MelSpectrogram, MFCC, Spectrogram
 from src.training.invariables import DEV
 import os
 import warnings
+from speechbrain.processing.speech_augmentation import AddReverb
 
 
 class CustomDataset(Dataset):
 
-    def __init__(self, dataset_df, sample_rate, target_sample_rate, model, classification_type, mean, std, seed, postprocess=None) -> None:
+    def __init__(self, dataset_df, sample_rate, target_sample_rate, model, classification_type, mean, std, seed, postprocess=None, corruption_type=0, scale_factor=1.0) -> None:
 
         self.df = dataset_df
         self.model = model
@@ -26,6 +27,23 @@ class CustomDataset(Dataset):
         self.postprocess = postprocess
         self.seed = seed
         
+        self.corruption_type = corruption_type
+        reverb_path = "/USERSPACE/DATASETS/LibriSpeech/reverb.csv"
+        self.reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=scale_factor)
+        if self.corruption_type == 2:
+            # 320 kbps → "near-CD quality", very little audible difference from WAV for most people.
+            # 192 kbps → good balance, most streaming platforms (like Spotify free tier) use this.
+            # 128 kbps → standard web/voice quality, but some artifacts in music.
+            # 64 kbps or lower → intelligible speech, but noticeable degradation.
+            if scale_factor == 192:
+                self.bitrate="192k"
+            elif scale_factor == 128:
+                self.bitrate="128k"
+            elif scale_factor == 64:
+                self.bitrate="64k"
+            else:
+                self.bitrate=scale_factor
+
         self.lfcc = LFCC(
             n_filter=20,
             n_lfcc=60,
@@ -60,10 +78,34 @@ class CustomDataset(Dataset):
 
         row = self.df.iloc[index]
         sample_uri = row["path"]
+        # print(sample_uri)
         label = row["label"]
-
-        waveform, samplerate = load(sample_uri)
+        try:
+            waveform, samplerate = load(sample_uri, normalize=False)
+            if waveform.dtype == torch.int16:  # WAV PCM16
+                waveform = waveform.float() / 32768.0
+            elif waveform.dtype == torch.float32:  # MP3 (already float [-1,1])
+                pass  # do nothing
+            else:
+                raise ValueError(f"Unexpected dtype {waveform.dtype}")
+            
+            # waveform, samplerate = load(sample_uri, normalize=True)
+            # print(waveform.shape, "entro")
+            # waveform = waveform.float() / 32768.0  # manual normalization from PCM16
+        except Exception as e:
+            print(f"Error reading file: {sample_uri}")
+            raise e
         waveform = waveform.float()
+        
+        if self.corruption_type == 1:
+            waveform = self.reverb(waveform, torch.tensor([1.0]))
+            '''
+            import os
+            torchaudio.save(os.path.basename(sample_uri), audio.cpu(), samplerate)  # , encoding="PCM_S", bits_per_sample=16)
+            print(waveform.shape, audio.shape, sample_uri, os.path.basename(sample_uri), self.target_sample_rate, samplerate)
+            print(afsasf)
+            '''
+
         waveform = self.resample(waveform, samplerate)
 
         if self.transform is not None:
@@ -72,10 +114,10 @@ class CustomDataset(Dataset):
 
         if self.mean is not None and self.std is not None:
             waveform = (waveform - self.mean[:, None]) / self.std[:, None]
-
+        
         if self.postprocess is not None:
             waveform = self.postprocess(waveform)
-
+                
         label = torch.tensor(label, dtype=torch.long)
         return waveform, label
 
@@ -168,18 +210,12 @@ class WaveformToAvgSpec:
         # return energy.unsqueeze(0)
         return torch.nanmean(spec, dim=3)
 
-# path to the filter coefficient file
-file_path = "/home/pizarm5k/audio-fingerprint/filter_coefs/low_pass_filter/1.0khz.txt"
-# check if file exists
-if not os.path.isfile(file_path):
-    warnings.warn(f"[WARNING] Filter coefficient file not found: {file_path}. Using empty coefficients.")
-else:
-    x = []
-    for y in file_in.read().split('\n'):
-        x.append(float(y))
-    coef = torch.tensor(x)
-    FILTER = filter_fn(1, coef, dev=DEV)
-
+x = []
+file_in = open(f"/USERSPACE/pizarm5k/github_fingerprint/fingerprint/spectral_filter_coefs/low_pass_filter/1khz.txt", 'r')
+for y in file_in.read().split('\n'):
+    x.append(float(y))
+coef = torch.tensor(x)
+FILTER = filter_fn(1, coef, dev=DEV)
 
 AVG_SPEC = WaveformToAvgSpec(n_fft=128, hop_length=2, device=DEV).forward
 

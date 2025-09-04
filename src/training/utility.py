@@ -107,7 +107,7 @@ def get_metric(performance_metric):
     return metric
 
 
-def save_confusion_matrix_to_excel(conf_matrix, destination_url, classification_type):
+def save_confusion_matrix_to_excel(conf_matrix, destination_url, classification_type, corruption_type, scale_factor, NN_flg=1):
 
     conf_matrix = conf_matrix.cpu().numpy()
     if "binary" in classification_type:
@@ -117,11 +117,14 @@ def save_confusion_matrix_to_excel(conf_matrix, destination_url, classification_
 
     conf_matrix_df = pd.DataFrame(conf_matrix, columns=[f"Pred_{i}" for i in labels],
                     index=[f"True_{i}" for i in labels])
-    conf_matrix_df.to_excel(f'{destination_url}/testing_confusion_matrix.xlsx', index=True)
+    if NN_flg:
+        conf_matrix_df.to_excel(f'{destination_url}/testing_confusion_matrix_corrtype_{corruption_type}_factor{scale_factor}.xlsx', index=True)
+    else:
+        conf_matrix_df.to_excel(f'{destination_url}/testing_confusion_matrix_corrtype_{corruption_type}_factor{scale_factor}_NN{NN_flg}.xlsx', index=True)
     print("Confusion matrix saved...")    
 
 
-def save_heatmap(conf_matrix, destination_url, classification_type):
+def save_heatmap(conf_matrix, destination_url, classification_type, corruption_type, scale_factor, NN_flg=1):
 
     if "binary" in classification_type:
         labels = BINARY_CLASS_LABELS
@@ -135,5 +138,8 @@ def save_heatmap(conf_matrix, destination_url, classification_type):
     plt.xlabel("Predicted Labels")
     plt.ylabel("True Labels")
     plt.title("Confusion Matrix")
-    plt.savefig(f'{destination_url}/testing_heatmap.png', bbox_inches="tight")
+    if NN_flg:
+        plt.savefig(f'{destination_url}/testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}.png', bbox_inches="tight")
+    else:
+        plt.savefig(f'{destination_url}/testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}_NN{NN_flg}.png', bbox_inches="tight")    
     print("Heatmaps of Confusion matrices saved...")

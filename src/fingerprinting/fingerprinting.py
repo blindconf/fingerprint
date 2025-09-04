@@ -3,7 +3,8 @@ import torchaudio
 from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
-from src.datasets.utility import pad_and_concatenate
+from src.datasets.utility_2 import pad_and_concatenate
+from speechbrain.processing.speech_augmentation import AddReverb
 
 
 class WaveformToAvgSpec:
@@ -133,7 +134,7 @@ class FingerprintingWrapper:
 
         pass
                     
-    def forward(self, dl: torch.Tensor, ds_real: DataLoader = None, cutoff=None) -> float:
+    def forward(self, dl: torch.Tensor, ds_real: DataLoader = None, cutoff=None, corruption_type=0, scale_factor=1.0) -> float:
         scores = []
         if self.filter.name == 'Oracle':
             total_batches = min(len(dl), len(ds_real))
@@ -159,12 +160,43 @@ class FingerprintingWrapper:
                     fingerprint = self.fingerprint
                     score = mahalanobis_score(fingerprint, residual, self.invcov)
                 scores.append(score)
-        else:    
+        else:
+            if corruption_type == 1:
+                reverb_path = "/USERSPACE/DATASETS/LibriSpeech/reverb.csv"
+                reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=scale_factor)    
             for i in tqdm(dl, desc="Evaluating fingerprint"):
-                audio = i[0]
                 original_audio_lengths = i[1]
                 batch_sample_rate = i[2][0]
-                path = i[2]
+                path = i[3]
+                if corruption_type == 1:
+                    audio_rev = i[0].squeeze(1)
+                    # Convert to tensor
+                    lengths_tensor = torch.tensor(original_audio_lengths, dtype=torch.float32)
+                    # Normalize by the maximum length
+                    normalized = lengths_tensor / lengths_tensor.max()
+                    # Sort lengths ascending, and get sorted indices
+                    sorted_lengths, indices = torch.sort(normalized, descending=False)
+                    # Reorder x using those indices
+                    audio_rev = audio_rev[indices]
+                    '''
+                    torchaudio.save("example.wav", reverb(audio_rev, normalized).cpu(), batch_sample_rate, encoding="PCM_S", bits_per_sample=16)
+                    
+                    reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=0.5)
+                    torchaudio.save("example_1.wav", reverb(audio_rev, normalized).cpu(), batch_sample_rate, encoding="PCM_S", bits_per_sample=16)
+
+                    reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=0.2)
+                    torchaudio.save("example_2.wav", reverb(audio_rev, normalized).cpu(), batch_sample_rate, encoding="PCM_S", bits_per_sample=16)
+
+                    reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=1.2)
+                    torchaudio.save("example_3.wav", reverb(audio_rev, normalized).cpu(), batch_sample_rate, encoding="PCM_S", bits_per_sample=16)
+
+                    reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=1.5)
+                    torchaudio.save("example_4.wav", reverb(audio_rev, normalized).cpu(), batch_sample_rate, encoding="PCM_S", bits_per_sample=16)
+                    '''
+                    audio = reverb(audio_rev, normalized).reshape(i[0].shape)
+                    # print(path)
+                else:
+                    audio = i[0]
                 if self.filter.name == "EncodecFilter":
                     filtered_audio = self.filter.forward(audio, batch_sample_rate)
                 elif self.filter.name in ["low_pass_filter", 

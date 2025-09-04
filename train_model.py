@@ -1,4 +1,14 @@
-import os
+import sys, os
+# Absolute path to THIS repo (fingerprint_bachelor/DetectingVocoderFingerprints)
+# repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+
+# Wipe out any other conflicting paths containing "src"
+# sys.path = [repo_root] + [p for p in sys.path if "github_fingerprint" not in p]
+
+# If "src" is already loaded from the wrong repo, drop it
+# if "src" in sys.modules:
+#     del sys.modules["src"]
+
 import random
 import subprocess
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -6,26 +16,22 @@ import numpy as np
 import torch
 import pandas as pd
 import click
-import sys
 from datetime import datetime
 from torch import no_grad, argmax, save
 from torchmetrics import F1Score, Precision, Recall, Accuracy, ConfusionMatrix, AUROC
 from torch.nn import DataParallel
 from tqdm import tqdm
-# from tabulate import tabulate
+from tabulate import tabulate
 from torch.utils.data import DataLoader
 from torch import Generator
-from src.datasets.utility import load_or_construct_datasets, collate_fn, StratifiedSampler # get_datasets
+from src.datasets.utility import collate_fn, get_datasets, StratifiedSampler
 from src.training.utility import get_model, get_optimizer_scheduler_loss_function, get_metric, save_confusion_matrix_to_excel, save_heatmap, set_seed
-from src.training.invariables import DEV, DEVICE_IDS, URL_DIR_TO_SAVE_MODELS_AND_LOGS, BATCH_SIZE, TARGET_SAMPLE_RATE, MEAN_STD_FOLDER_DIR
-from src.training.arguments import MODELS, CLASSIFICATION_TYPES, PERFORMANCE_METRICS, CORPUS
+from src.training.invariables import DEV, DEVICE_IDS, URL_DIR_TO_SAVE_MODELS_AND_LOGS, BATCH_SIZE
+from src.training.arguments import MODELS, CLASSIFICATION_TYPES, PERFORMANCE_METRICS
 import re
 import torch.multiprocessing as mp
 import gc
 from src.training.loss_functions import init_loss_functions
-from types import SimpleNamespace
-from src.datasets.custom_dataset import CustomDataset
-
 
 @click.command()
 @click.option('--model', type=click.Choice(MODELS), required=True, help='Model to train.')
@@ -34,13 +40,17 @@ from src.datasets.custom_dataset import CustomDataset
 #@click.option('--save_id', type=int, required=True, help='ID for saving the model.')
 @click.option('--seed', type=int, default=40, help='Random seed.')
 @click.option('--proportional/--non-proportional', default=False, show_default=True, help='Only for binary classification.')
-@click.option('--corpus', type=click.Choice(CORPUS), required=True, help='choices=ljspeech, jsut, asvspoof')
+@click.option('--corruption_type', type=int, default=0, help='Evaluate under lossy conditions: 0 = no corruption, 1 = reverberation, 2 = MP3 compression.')
+@click.option('--scale_factor', type=float, default=1.0, help='It compresses or dilates the given impulse response.') 
+@click.option('--use_nn', type=int, default=1, help='Set to 1 to use a DNN for the binary classifier under the fingerprint model, 0 to disable.')
 
-def main(model, classification_type, performance_metric, seed, proportional, corpus):   # save_id
-    args = SimpleNamespace(corpus=corpus, seed=seed)
+# By default proportional is False
+
+def main(model, classification_type, performance_metric, seed, proportional, corruption_type, scale_factor, use_nn):   # save_id
 
     set_seed(seed)
     init_loss_functions(seed)
+
     # run vocoder_fingerprint_attribution.py if model == fingerprints and classification_type is multiclass
     if model == "fingerprints":
 
@@ -51,7 +61,10 @@ def main(model, classification_type, performance_metric, seed, proportional, cor
             "src/training/vocoder_fingerprint_attribution.py",
             "--seed", str(seed),
             "--classification_type", classification_type,
-            "--performance_metric", performance_metric
+            "--performance_metric", performance_metric,
+            "--corruption_type", str(corruption_type), 
+            "--scale_factor", str(scale_factor),
+            "--use_nn", str(use_nn)
         ]
 
         if proportional:
@@ -69,52 +82,20 @@ def main(model, classification_type, performance_metric, seed, proportional, cor
         url_dir_to_save_model = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}{model}/{classification_type}/{prop}/{seed}'
     else: 
         url_dir_to_save_model = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}{model}/{classification_type}/{seed}'
-    
-    train_df, validate_df, test_df, real_audio_train_df, real_audio_validate_df, real_audio_test_df = load_or_construct_datasets(args)
-
-    if corpus == "jsut":
-        sample_rate = 24000
-    elif corpus == "ljspeech":
-        sample_rate = 22050
-    else:
-        sample_rate = 16000
-
-    train_ds = CustomDataset(dataset_df=train_df, sample_rate=sample_rate, target_sample_rate=TARGET_SAMPLE_RATE[model], model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
-    validate_ds = CustomDataset(dataset_df=validate_df, sample_rate=sample_rate, target_sample_rate=TARGET_SAMPLE_RATE[model], model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
-    test_ds = CustomDataset(dataset_df=test_df, sample_rate=sample_rate, target_sample_rate=TARGET_SAMPLE_RATE[model], model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
-
-    # Get corresponding mean and std
-    mean, std = get_mean_std(
-        ds=train_ds,
-        model=model,
-        classification_type=classification_type,
-        proportional=proportional,
-        seed=seed)
-
-    # Set retrieved mean and std, only for non-fingerprints, as residuals normalization is done inside training loop, after computing the residuals:
-    if model != "fingerprints":
-        train_ds.mean = mean
-        validate_ds.mean = mean
-        test_ds.mean = mean
-        train_ds.std = std
-        validate_ds.std = std
-        test_ds.std = std
-
-    # Set up contrastive learning to be done after mean and std were computed to apply contrastive learning on normalized log-mel features
-    if model == "vfd-resnet":
-        train_ds.transform
-        train_ds.postprocess = patch_wise_contrastive_learning
-        validate_ds.postprocess = patch_wise_contrastive_learning
-        test_ds.postprocess = patch_wise_contrastive_learning
-
-    print(f'Train dataset of size {len(train_df)}')
-    print(f'Validate dataset of size {len(validate_df)}')
-    print(f'Test dataset of size {len(test_df)}')
-    print(f'Total size: {len(train_df) + len(validate_df) + len(test_df)}')
 
     if not os.path.exists(url_dir_to_save_model):
         os.makedirs(url_dir_to_save_model)
-    print(f'Initializing {model} model training...')
+
+    # Get Dataloader
+        # Set up dataloaders
+    train_ds, validate_ds, test_ds, test_2_ds = get_datasets(
+        model=model,
+        classification_type=classification_type, 
+        proportional="proportional" if proportional else "non-proportional", 
+        seed=seed,
+        corruption_type=corruption_type, 
+        scale_factor=scale_factor
+        )
 
     sampler = None
     shuffle = True
@@ -126,8 +107,6 @@ def main(model, classification_type, performance_metric, seed, proportional, cor
         col_fn = None
 
     generator = Generator().manual_seed(seed)
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=col_fn, shuffle=shuffle, sampler=sampler)
-    validation_loader = DataLoader(validate_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=col_fn)
 
     # Get model
     my_model = get_model(model=model, classification_type=classification_type)
@@ -162,94 +141,59 @@ def main(model, classification_type, performance_metric, seed, proportional, cor
         prob_func = lambda signals: torch.nn.functional.softmax(signals, dim=1)
         preds_func = lambda signals: argmax(signals, dim=1)
 
-    # Create performance dataframe for training/validating
-    training_validating_score_df = pd.DataFrame(
-        columns=["Epoch", "Training_Loss", "Validating_Loss", "Training_Accuracy", 
-                 "Validating_Accuracy", "Training_F1_Score", "Validating_F1_Score", 
-                 "Training_Precision", "Validating_Precision","Training_Recall", 
-                 "Validating_Recall", "Training_AUROC", "Validating_AUROC"])
     testing_score_df = pd.DataFrame(
         columns=["Testing_Accuracy", "Testing_F1_Score", "Testing_Precision", "Testing_Recall", "Testing_AUROC"]
     )
 
-    # Training loop
-    epochs = 100
-    best_score = 0
-    print('Training started...')
-    
-    for epoch in tqdm(range(epochs), desc="Training Epochs"):
-        # Reset metrics
-        accuracy.reset(), f1.reset(), precision.reset()
-        recall.reset(), confusion_matrix.reset(), auroc.reset()
+    if not os.path.exists(f'{url_dir_to_save_model}/best_model.pth'):
 
+        print(f'Initializing {model} model training...')
 
-        # === Train Phase ===
-        my_model.train()
-        running_loss = 0.0
-        train_batches = len(train_loader)
+        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE[model], num_workers=16, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=col_fn, shuffle=shuffle, sampler=sampler)
+        validation_loader = DataLoader(validate_ds, batch_size=BATCH_SIZE[model], num_workers=16, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=col_fn)
 
+        # Create performance dataframe for training/validating
+        training_validating_score_df = pd.DataFrame(
+            columns=["Epoch", "Training_Loss", "Validating_Loss", "Training_Accuracy", 
+                    "Validating_Accuracy", "Training_F1_Score", "Validating_F1_Score", 
+                    "Training_Precision", "Validating_Precision","Training_Recall", 
+                    "Validating_Recall", "Training_AUROC", "Validating_AUROC"])
 
-        for waveforms, labels in tqdm(train_loader, desc="Training batches"):
-            # Transfer to device
-            if "binary" in classification_type:
-                labels = labels.float().unsqueeze(1)
-            waveforms, labels = waveforms.to(DEV), labels.to(DEV)
-            
-            # Zero gradients
-            optimizer.zero_grad()
-
-            # Forward pass
-            outputs, features = my_model(waveforms)
-            loss = loss_function(outputs, features, labels)
-            # Backward pass and optimization
-            loss.backward()
-            optimizer.step()
-
-            # Loss, predictions and probabilities
-            running_loss += loss.item()
-            probabilities = prob_func(outputs)
-            preds = preds_func(probabilities)
-
-            # Accumulate metrics
-            accuracy.update(preds, labels)
-            f1.update(preds, labels)
-            precision.update(preds, labels)
-            recall.update(preds, labels)
-            auroc.update(probabilities, labels)
-
-            # step for vfd-model
-            #if model == "vfd-resnet":
-            #    scheduler.step()
-
-
-        # Get scores
-        training_loss = running_loss / train_batches
-        training_accuracy = accuracy.compute().item()
-        training_f1_score = f1.compute().item()
-        training_precesion = precision.compute().item()
-        training_recall = recall.compute().item()
-        training_auroc = auroc.compute().item()
-
-
-        # === Validation Phase ===
-        # Reset metrics
-        accuracy.reset(), f1.reset(), precision.reset()
-        recall.reset(), confusion_matrix.reset(), auroc.reset()
+        # Training loop
+        epochs = 100
+        best_score = 0
+        print('Training started...')
         
-        my_model.eval()
-        validating_loss = 0.0
-        with no_grad():
-            for waveforms, labels in tqdm(validation_loader, desc="Validation batches"):
+        for epoch in tqdm(range(epochs), desc="Training Epochs"):
+            # Reset metrics
+            accuracy.reset(), f1.reset(), precision.reset()
+            recall.reset(), confusion_matrix.reset(), auroc.reset()
+
+
+            # === Train Phase ===
+            my_model.train()
+            running_loss = 0.0
+            train_batches = len(train_loader)
+
+
+            for waveforms, labels in tqdm(train_loader, desc="Training batches"):
+                # Transfer to device
                 if "binary" in classification_type:
                     labels = labels.float().unsqueeze(1)
                 waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                
+                # Zero gradients
+                optimizer.zero_grad()
 
                 # Forward pass
                 outputs, features = my_model(waveforms)
                 loss = loss_function(outputs, features, labels)
+                # Backward pass and optimization
+                loss.backward()
+                optimizer.step()
 
-                # loss, predictions and probabilities
-                validating_loss += loss.item()                
+                # Loss, predictions and probabilities
+                running_loss += loss.item()
                 probabilities = prob_func(outputs)
                 preds = preds_func(probabilities)
 
@@ -257,229 +201,244 @@ def main(model, classification_type, performance_metric, seed, proportional, cor
                 accuracy.update(preds, labels)
                 f1.update(preds, labels)
                 precision.update(preds, labels)
-                recall.update(preds, labels)                    
+                recall.update(preds, labels)
                 auroc.update(probabilities, labels)
 
-
-        # Get training_validating scores
-        validating_loss = validating_loss / len(validation_loader)
-        validating_accuracy = accuracy.compute().item()
-        validating_f1_score = f1.compute().item()
-        validating_precision = precision.compute().item()
-        validating_recall = recall.compute().item()
-        validating_auroc = auroc.compute().item()
+                # step for vfd-model
+                #if model == "vfd-resnet":
+                #    scheduler.step()
 
 
-        # Save training_validating scores to dict
-        training_validating_scores_dict = {
-            "Epoch": epoch+1,
-            "Training_Loss": training_loss,
-            "Validating_Loss": validating_loss,
-            "Training_Accuracy": training_accuracy,
-            "Validating_Accuracy": validating_accuracy,
-            "Training_F1_Score": training_f1_score,
-            "Validating_F1_Score": validating_f1_score,
-            "Training_Precision": training_precesion,
-            "Validating_Precision": validating_precision,
-            "Training_Recall": training_recall,
-            "Validating_Recall": validating_recall,
-            "Training_AUROC": training_auroc,
-            "Validating_AUROC": validating_auroc
-        }
+            # Get scores
+            training_loss = running_loss / train_batches
+            training_accuracy = accuracy.compute().item()
+            training_f1_score = f1.compute().item()
+            training_precesion = precision.compute().item()
+            training_recall = recall.compute().item()
+            training_auroc = auroc.compute().item()
 
 
-        # Add training_validating scores to dataframe and log them to wandb
+            # === Validation Phase ===
+            # Reset metrics
+            accuracy.reset(), f1.reset(), precision.reset()
+            recall.reset(), confusion_matrix.reset(), auroc.reset()
+            
+            my_model.eval()
+            validating_loss = 0.0
+            with no_grad():
+                for waveforms, labels in tqdm(validation_loader, desc="Validation batches"):
+                    if "binary" in classification_type:
+                        labels = labels.float().unsqueeze(1)
+                    waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+
+                    # Forward pass
+                    outputs, features = my_model(waveforms)
+                    loss = loss_function(outputs, features, labels)
+
+                    # loss, predictions and probabilities
+                    validating_loss += loss.item()                
+                    probabilities = prob_func(outputs)
+                    preds = preds_func(probabilities)
+
+                    # Accumulate metrics
+                    accuracy.update(preds, labels)
+                    f1.update(preds, labels)
+                    precision.update(preds, labels)
+                    recall.update(preds, labels)                    
+                    auroc.update(probabilities, labels)
+
+
+            # Get training_validating scores
+            validating_loss = validating_loss / len(validation_loader)
+            validating_accuracy = accuracy.compute().item()
+            validating_f1_score = f1.compute().item()
+            validating_precision = precision.compute().item()
+            validating_recall = recall.compute().item()
+            validating_auroc = auroc.compute().item()
+
+
+            # Save training_validating scores to dict
+            training_validating_scores_dict = {
+                "Epoch": epoch+1,
+                "Training_Loss": training_loss,
+                "Validating_Loss": validating_loss,
+                "Training_Accuracy": training_accuracy,
+                "Validating_Accuracy": validating_accuracy,
+                "Training_F1_Score": training_f1_score,
+                "Validating_F1_Score": validating_f1_score,
+                "Training_Precision": training_precesion,
+                "Validating_Precision": validating_precision,
+                "Training_Recall": training_recall,
+                "Validating_Recall": validating_recall,
+                "Training_AUROC": training_auroc,
+                "Validating_AUROC": validating_auroc
+            }
+
+
+            # Add training_validating scores to dataframe 
+            training_validating_score_df.loc[len(training_validating_score_df)] = training_validating_scores_dict
+
+            # Save the best model based on validation F1 score
+            metric = get_metric(performance_metric)
+            if training_validating_scores_dict[metric] > best_score:
+                best_score = training_validating_scores_dict[metric]
+                print("\n\nNew best model found! Saving...")
+
+                save(my_model.state_dict(), f'{url_dir_to_save_model}/best_model.pth')
+                save(scheduler.state_dict(), f'{url_dir_to_save_model}/scheduler.pth')
+                save(optimizer.state_dict(), f'{url_dir_to_save_model}/optimizer.pth')
+
+            # Scheduler step
+            #if model in ["resnet", "se-resnet", "lcnn", "x-vector"]:
+            scheduler.step()
+            #print(f'Learning rate at epoch {epoch}: {scheduler.get_last_lr()}')
+
+
+            # Print Metrics
+            print("\n")
+            table = [[key, value] for key, value in training_validating_scores_dict.items()]
+            print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
+            print("\n")
+
+        print("\nTraining Completed.")
+
+        del train_loader
+        del validation_loader
+        gc.collect()
+        
+        # Add scores to dataframes
         training_validating_score_df.loc[len(training_validating_score_df)] = training_validating_scores_dict
-        wandb.log(training_validating_scores_dict, step=epoch+1)
-
-
-        # Save the best model based on validation F1 score
-        metric = get_metric(performance_metric)
-        if training_validating_scores_dict[metric] > best_score:
-            best_score = training_validating_scores_dict[metric]
-            print("\n\nNew best model found! Saving...")
-
-            save(my_model.state_dict(), f'{url_dir_to_save_model}/best_model.pth')
-            save(scheduler.state_dict(), f'{url_dir_to_save_model}/scheduler.pth')
-            save(optimizer.state_dict(), f'{url_dir_to_save_model}/optimizer.pth')
-
-        # Scheduler step
-        #if model in ["resnet", "se-resnet", "lcnn", "x-vector"]:
-        scheduler.step()
-        #print(f'Learning rate at epoch {epoch}: {scheduler.get_last_lr()}')
-
-
-        # Print Metrics
-        print("\n")
-        table = [[key, value] for key, value in training_validating_scores_dict.items()]
-        # print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
-        print("\n")
-
-    print("\nTraining Completed.")
-
-    del train_loader
-    del validation_loader
-    gc.collect()
+        # Save scores
+        training_validating_score_df.to_excel(f'{url_dir_to_save_model}/training_validating_scores.xlsx', index=False)
 
     # === Test Phase ===
     print("\nTesting the best model...")
-    test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=col_fn)
-    my_model.load_state_dict(torch.load(f'{url_dir_to_save_model}/best_model.pth'))
+    test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE[model], num_workers=16, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=col_fn)
+    # for i in tqdm(test_ds, desc="Testing batches"):
+      #  continue
+    # my_model.load_state_dict(torch.load(f'{url_dir_to_save_model}/best_model.pth'))
+    checkpoint = torch.load(f'{url_dir_to_save_model}/best_model.pth',
+                        map_location=lambda storage, loc: storage.cuda(0) if torch.cuda.is_available() else storage)
+    my_model.load_state_dict(checkpoint)
+    
     my_model.eval()
 
+    test_2_ds = None
+    if test_2_ds is not None:
 
-    # Reset Metrics
-    accuracy.reset(), f1.reset(), precision.reset()
-    recall.reset(), confusion_matrix.reset(), auroc.reset()
+        test_2_loader = DataLoader(test_2_ds, batch_size=BATCH_SIZE[model], num_workers=16, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=col_fn)
 
+        testing_score_2_df = pd.DataFrame(
+        columns=["Testing_Accuracy", "Testing_F1_Score", "Testing_Precision", "Testing_Recall", "Testing_AUROC"]
+        )
+        # Reset Metrics
+        accuracy.reset(), f1.reset(), precision.reset()
+        recall.reset(), confusion_matrix.reset(), auroc.reset()
 
-    with no_grad():
-        for waveforms, labels in tqdm(test_loader, desc="Testing batches"):
-            if "binary" in classification_type:
-                labels = labels.float().unsqueeze(1)
-            waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+        with no_grad():
+            for waveforms, labels in tqdm(test_2_loader, desc="Testing batches"):
+                if "binary" in classification_type:
+                    labels = labels.float().unsqueeze(1)
+                waveforms, labels = waveforms.to(DEV), labels.to(DEV)
 
-     
-            # Forward pass
-            outputs, features = my_model(waveforms)
-            probabilities = prob_func(outputs)
-            preds = preds_func(probabilities)
+                # Forward pass
+                outputs, features = my_model(waveforms)
+                probabilities = prob_func(outputs)
+                preds = preds_func(probabilities)
 
-            # Update Metrics
-            accuracy.update(preds, labels)
-            f1.update(preds, labels)
-            precision.update(preds, labels)
-            recall.update(preds, labels)
-            confusion_matrix.update(preds, labels)
-            auroc.update(probabilities, labels)
+                # Update Metrics
+                accuracy.update(preds, labels)
+                f1.update(preds, labels)
+                precision.update(preds, labels)
+                recall.update(preds, labels)
+                confusion_matrix.update(preds, labels)
+                auroc.update(probabilities, labels)
 
-    # Get test scores
-    testing_accuracy = accuracy.compute().item()
-    testing_f1_score = f1.compute().item()
-    testing_precision = precision.compute().item()
-    testing_recall = recall.compute().item()
-    testing_confusion_matrix = confusion_matrix.compute()
-    testing_auroc = auroc.compute().item()    
+        # Get test scores
+        testing_accuracy = accuracy.compute().item()
+        testing_f1_score = f1.compute().item()
+        testing_precision = precision.compute().item()
+        testing_recall = recall.compute().item()
+        testing_confusion_matrix = confusion_matrix.compute()
+        testing_auroc = auroc.compute().item()    
 
-    # Save test scores to dict
-    testing_scores_dict = {
-        "Testing_Accuracy": testing_accuracy,
-        "Testing_F1_Score": testing_f1_score,
-        "Testing_Precision": testing_precision,
-        "Testing_Recall": testing_recall,
-        "Testing_AUROC": testing_auroc,
-    }
+        # Save test scores to dict
+        testing_scores_2_dict = {
+            "Testing_Accuracy": testing_accuracy,
+            "Testing_F1_Score": testing_f1_score,
+            "Testing_Precision": testing_precision,
+            "Testing_Recall": testing_recall,
+            "Testing_AUROC": testing_auroc,
+        }
 
-    # Print test metrics
-    print("\n")
-    table = [[key, value] for key, value in testing_scores_dict.items()]
-    # print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
-    print("\n")
-    
-    # Add scores to dataframes
-    training_validating_score_df.loc[len(training_validating_score_df)] = training_validating_scores_dict
-    testing_score_df.loc[len(testing_score_df)] = testing_scores_dict
-    
+        # Print test metrics
+        print("\n")
+        table = [[key, value] for key, value in testing_scores_2_dict.items()]
+        print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
+        print("\n")
+        
+        # Add scores to dataframes
+        testing_score_2_df.loc[len(testing_score_2_df)] = testing_scores_2_dict
+        # Save scores
+        testing_score_2_df.to_excel(f'{url_dir_to_save_model}/testing_scores_2.xlsx', index=False)
+        # save_confusion_matrix_to_excel(conf_matrix=testing_confusion_matrix, destination_url=url_dir_to_save_model, classification_type=classification_type)
+        # save_heatmap(conf_matrix=testing_confusion_matrix.cpu().numpy(), destination_url=url_dir_to_save_model, classification_type=classification_type)
+    else:
+        # Reset Metrics
+        accuracy.reset(), f1.reset(), precision.reset()
+        recall.reset(), confusion_matrix.reset(), auroc.reset()
 
-    # Save scores
-    training_validating_score_df.to_excel(f'{url_dir_to_save_model}/training_validating_scores.xlsx', index=False)
-    testing_score_df.to_excel(f'{url_dir_to_save_model}/testing_scores.xlsx', index=False)
-    save_confusion_matrix_to_excel(conf_matrix=testing_confusion_matrix, destination_url=url_dir_to_save_model, classification_type=classification_type)
-    save_heatmap(conf_matrix=testing_confusion_matrix.cpu().numpy(), destination_url=url_dir_to_save_model, classification_type=classification_type)
+        with no_grad():
+            for waveforms, labels in tqdm(test_loader, desc="Testing batches"):
+                if "binary" in classification_type:
+                    labels = labels.float().unsqueeze(1)
+                waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                # print(waveforms.shape)
+                # print(asfas)
+                # '''
+                # Forward pass
+                outputs, features = my_model(waveforms)
+                probabilities = prob_func(outputs)
+                preds = preds_func(probabilities)
+
+                # Update Metrics
+                accuracy.update(preds, labels)
+                f1.update(preds, labels)
+                precision.update(preds, labels)
+                recall.update(preds, labels)
+                confusion_matrix.update(preds, labels)
+                auroc.update(probabilities, labels)
+                # '''
+        # Get test scores
+        testing_accuracy = accuracy.compute().item()
+        testing_f1_score = f1.compute().item()
+        testing_precision = precision.compute().item()
+        testing_recall = recall.compute().item()
+        testing_confusion_matrix = confusion_matrix.compute()
+        testing_auroc = auroc.compute().item()    
+
+        # Save test scores to dict
+        testing_scores_dict = {
+            "Testing_Accuracy": testing_accuracy,
+            "Testing_F1_Score": testing_f1_score,
+            "Testing_Precision": testing_precision,
+            "Testing_Recall": testing_recall,
+            "Testing_AUROC": testing_auroc,
+        }
+
+        # Print test metrics
+        print("\n")
+        table = [[key, value] for key, value in testing_scores_dict.items()]
+        print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
+        print("\n")
+        
+        # Add scores to dataframes
+        testing_score_df.loc[len(testing_score_df)] = testing_scores_dict
+        # Save scores
+        testing_score_df.to_excel(f'{url_dir_to_save_model}/testing_scores_corrtype_{corruption_type}_factor{scale_factor}.xlsx', index=False)
+        save_confusion_matrix_to_excel(conf_matrix=testing_confusion_matrix, destination_url=url_dir_to_save_model, classification_type=classification_type, corruption_type=corruption_type, scale_factor=scale_factor)
+        save_heatmap(conf_matrix=testing_confusion_matrix.cpu().numpy(), destination_url=url_dir_to_save_model, classification_type=classification_type, corruption_type=corruption_type, scale_factor=scale_factor)
     print("Scores saved...")
 
-def get_mean_std(
-    ds,
-    model,
-    classification_type,
-    proportional,
-    seed):
-
-    dir = os.path.join(MEAN_STD_FOLDER_DIR, classification_type)
-
-    if model == "fingerprints" and "multiclass" in classification_type: # No mean and std needed for samples scoring using mahalanobis distance
-        return None, None
-
-    if "binary" in classification_type:
-        dir = os.path.join(dir, proportional)
-
-    
-    if model == "vfd-resnet":
-        dir = os.path.join(dir, "mel")
-
-    elif model == "fingerprints":
-        dir = os.path.join(dir, "residuals")
-    else:
-        dir = os.path.join(dir, "lfcc")
-
-    # Create corresponding mean and std if not present
-    dir = os.path.join(dir, str(seed))
-    if not os.path.exists(dir):
-        print("Mean and std for the corresponding train dataset and gived seed not found.")
-        compute_mean_std_and_save(
-            ds=ds,
-            model=model,
-            out_dir=dir)
-
-    with open(os.path.join(dir, 'mean.pkl'), "rb") as f:
-        mean = pickle.load(f)
-    with open(os.path.join(dir, 'std.pkl'), "rb") as f:
-        std = pickle.load(f)
-
-    return mean, std
-
-def compute_mean_std_and_save(ds, model, out_dir):
-
-    print("Computing mean and std over the train dataset...")
-
-    sum_features = None
-    sum_squared_features = None
-    total_frames = 0
-
-    processed_samples = 0
-    total_samples = len(ds)
-    postprocess = lambda signals: signals if model != "fingerprints" else waveform_to_residual(signals.unsqueeze(0), [signals.shape[-1]])   # Add batch dim
-
-    for i in range(total_samples):
-        signals, _ = ds[i]
-        signals = signals.to(DEV)
-        signals = postprocess(signals)
-
-        # Running sum of features
-        if sum_features is None:
-            sum_features = signals.sum(dim=1)
-            sum_squared_features = (signals ** 2).sum(dim=1)
-        else:
-            sum_features += signals.sum(dim=1)
-            sum_squared_features += (signals ** 2).sum(dim=1)
-
-        total_frames += signals.shape[1]
-
-        # Update and display progress
-        processed_samples += 1
-        percentage_done = (processed_samples / total_samples) * 100
-        print(f"\rProgress: {percentage_done:.2f}% samples processed", end="")
-
-        del signals
-        torch.cuda.empty_cache()
-
-    print("\nComputation complete.")
-
-    # Compute final mean and std
-    mean = sum_features / total_frames
-    std = torch.sqrt(sum_squared_features / total_frames - mean ** 2)
-
-    print(f"Computed Mean Shape: {mean.shape}")
-    print(f"Computed Std Shape: {std.shape}")
-
-    # Save mean and std
-    os.makedirs(out_dir, exist_ok=True)
-    with open(f'{out_dir}/mean.pkl', "wb") as f:
-        pickle.dump(mean.cpu().numpy(), f)  # Ensure it's on CPU before saving
-    with open(f'{out_dir}/std.pkl', "wb") as f:
-        pickle.dump(std.cpu().numpy(), f)  # Ensure it's on CPU before saving
-
-    print(f"Mean and std saved in {out_dir}.")
-
 if __name__ == "__main__":
-    main()  
+    main()

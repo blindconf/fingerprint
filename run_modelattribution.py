@@ -13,7 +13,7 @@ import logging
 from src.fingerprinting.filters import OracleFilter, filter_fn, EncodecFilter
 import torch
 import os
-from src.datasets.utility import load_or_construct_datasets, get_caching_paths, plot_finger_freq, hist_plot, get_auc_path
+from src.datasets.utility_2 import load_or_construct_datasets, get_caching_paths, plot_finger_freq, hist_plot, get_auc_path
 from encodec import EncodecModel
 from src.fingerprinting.fingerprinting import WaveformToAvgSpec, FingerprintingWrapper
 import numpy as np
@@ -80,6 +80,8 @@ def parse_args():
     parser.add_argument("--encodec-samplewise", action="store_true", help="Encodec reencoding is applied samplewise. Strangely, the output is different depending on batch-wise or sample-wise computations.")
     parser.add_argument("--encodec-qr", choices=["1_5", "3", "6", "12", "24"], default="1_5", help="Quantization rate for the Encodec perturbation.")
     parser.add_argument("--plot-flg", action="store_true", help="If set, generates residual plots and histogram fingerprints for diagnostic analysis.")
+    parser.add_argument("--corruption-type", choices=[0, 1, 2], type=int, default=0, help="Evaluate under lossy conditions: 0 = no corruption, 1 = reverberation, 2 = MP3 compression.")
+    parser.add_argument("--scale-factor", type=float, default=1.0, help="It compresses or dilates the given impulse response.")
 
     args = parser.parse_args()
 
@@ -129,7 +131,7 @@ def main(args):
     train_df, validate_df, test_df, real_audio_train_df, real_audio_validate_df, real_audio_test_df = load_or_construct_datasets(args)
     # Prepare directories for storing outputs such as fingerprints and plots.
     data_dir_path = f"fingerprints/{args.corpus}/{args.seed}/{args.filter_type}"
-    plot_path = f"plots/{args.corpus}/{args.seed}/Avg_Spec/{args.scorefunction}/{args.filter_type}"
+    plot_path = f"plots/{args.corpus}/{args.seed}/Avg_Spec/{args.scorefunction}/{args.filter_type}/{args.corruption_type}"
     if args.filter_type == "EncodecFilter":
         data_dir_path += f"-compute_samplewise={args.encodec_samplewise}"
         plot_path += f"-compute_samplewise={args.encodec_samplewise}"
@@ -170,11 +172,13 @@ def main(args):
     finger_folder = f"trained_models/fingerprint/{args.corpus}/{args.seed}/{args.filter_type}"
     os.makedirs(finger_folder, exist_ok=True)
 
+    num_train_data_dict = {}
     # Loop over each attack label (each fake model) to train a dedicated fingerprint.
     for label in attack_labels:
-        attack_df = train_df[train_df["label"] == label]
+        attack_df = train_df[train_df["label"] == label] # .sample(n=25, random_state=42)
         # Sanity check for Mahalanobis scoring function
         args.num_train = len(attack_df)
+        num_train_data_dict[label] = args.num_train
         if args.scorefunction == "mahalanobis" and args.num_train * 2 < args.nfft:
             logger.error("The sample size is too small for Mahalanobis scoring.")
             sys.exit(f"The sample size is too small. Consider reducing the nfft value ({args.nfft}) or increasing the number of training samples ({args.num_train}).")
@@ -201,10 +205,11 @@ def main(args):
         
         # os.makedirs(f"{plot_path}/{folder_name}", exist_ok=True)
         caching_paths = get_caching_paths(cache_dir=finger_folder, args=args, target_model=CORPUS_DICT_REVERSE[label])
-        fingerprint_path = caching_paths['fingerprint']
+        fingerprint_path = caching_paths['fingerprint']# .strip()
         
         # If fingerprint is not precomputed, train it now and optionally cache it.
-        if not os.path.isfile(fingerprint_path):    
+        # print(fingerprint_path)
+        if not os.path.isfile(fingerprint_path): 
             logger.info("======================================")
             logger.info(f"Processing {CORPUS_DICT_REVERSE[label]}!")
             logger.info("======================================")
@@ -240,14 +245,14 @@ def main(args):
             if args.plot_flg:
                 plot_folder = f"plots/fingerprint/residuals/{args.corpus}/{args.seed}/{args.filter_type}"      
                 os.makedirs(plot_folder, exist_ok=True)
-                plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={CORPUS_DICT_REVERSE[label]}.pdf"
+                plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={CORPUS_DICT_REVERSE[label]}_corrtype={args.corruption_type}.pdf"
                 plot_finger_freq(args.sample_rate, wrapper.fingerprint, wrapper.name, plot_path)
     
     # Evaluate each trained fingerprint against all test models (cross-model comparison).
     for label in attack_labels:
+        args.num_train = num_train_data_dict[label]
         caching_paths = get_caching_paths(cache_dir=finger_folder, args=args, target_model=CORPUS_DICT_REVERSE[label])
         fingerprint_path = caching_paths['fingerprint']
-        
         if os.path.isfile(fingerprint_path):
             with open(fingerprint_path, 'rb') as f:
                 wrapper.fingerprint = pickle.load(f)
@@ -298,7 +303,7 @@ def main(args):
                 if args.filter_type == 'Oracle':
                     output = wrapper.forward(audio_test_dataloader, real_audio_dataloader, cutoff=args.cutoff)
                 else:    
-                    output = wrapper.forward(audio_test_dataloader, cutoff=args.cutoff)
+                    output = wrapper.forward(audio_test_dataloader, cutoff=args.cutoff, corruption_type=args.corruption_type, scale_factor=args.scale_factor)
                 outputs[label_test] = output.cpu().tolist()
             
             if args.filter_type != 'Oracle':
@@ -320,7 +325,7 @@ def main(args):
                     if args.plot_flg:
                         plot_folder = f"plots/fingerprint/histograms/{args.corpus}/{args.seed}/{args.filter_type}"
                         os.makedirs(plot_folder, exist_ok=True)
-                        plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_models={CORPUS_DICT_REVERSE[label]}_vs_{CORPUS_DICT_REVERSE[key_dict]}.png"
+                        plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_corrtype={args.corruption_type}_models={CORPUS_DICT_REVERSE[label]}_vs_{CORPUS_DICT_REVERSE[key_dict]}.png"
                         if args.scorefunction == "correlation":                    
                             x_label = "Correlation"
                         else:
@@ -335,12 +340,14 @@ def main(args):
 
             # Create Excel file with AUC results
             # Save AUC results across all comparisons to an Excel file for later review.
+            # '''
             with pd.ExcelWriter(auc_path) as writer:
                 for method, data in auc_results.items():
                     # Convert the list of dictionaries to a DataFrame
                     df = pd.DataFrame(data)
                     # Write the DataFrame to an Excel sheet
-                    df.to_excel(writer, sheet_name=method, index=False)                    
+                    df.to_excel(writer, sheet_name=method, index=False)
+            # '''                    
         else:
             continue
 
