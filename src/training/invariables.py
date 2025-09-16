@@ -137,13 +137,25 @@ ASVSPOOF = {
     'A19': 19
 }
 
+CODECFAKE = {
+    'Real': 0,
+    'C1': 1,
+    'C2': 2,
+    'C3': 3,
+    'C4': 4,
+    'C5': 5,
+    'C6': 6,
+    'C7': 7
+}
+
 DATASETS = {
     # "binary-ljspeech": MULTI_CLASS_10_LABELS,
     # "binary-jsut": MULTI_CLASS_13_LABELS,
     # "binary-asvspoof": MULTI_CLASS_13_LABELS,
     "ljspeech": LJSPEECH,
     "jsut": JSUT,
-    "asvspoof": ASVSPOOF
+    "asvspoof": ASVSPOOF,
+    "codecfake": CODECFAKE
     # "multiclass-jsut": MULTI_CLASS_jsut, 
     # "multiclass-asvspoof": MULTI_CLASS_asvspoof
 }

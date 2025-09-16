@@ -475,14 +475,14 @@ def load_or_construct_datasets(args):
         create_asvspoof_csv_from_protocols(
             train_protocol, dev_protocol, eval_protocol,
             audio_dir_train, audio_dir_dev, audio_dir_eval,
-            f"csv_dir/{args.corpus}/fake_audio/multiclass/csv_files",
+            f"csv_dir/{args.corpus}/fake_audio/multiclass/{args.seed}/csv_files",
             args.corpus
         )
 
         # Split spoof audio for open-world training
         train_df, validate_df, test_df = create_asvspoof_openworld_splits_precise(
-            audio_dir=f"csv_dir/{args.corpus}/fake_audio/multiclass/csv_files",
-            dest_dir=f"csv_dir/{args.corpus}/fake_audio/multiclass",
+            audio_dir=f"csv_dir/{args.corpus}/fake_audio/multiclass/{args.seed}/csv_files",
+            dest_dir=f"csv_dir/{args.corpus}/fake_audio/multiclass/{args.seed}",
             classification_type=args.corpus,
             seed=args.seed
         )
@@ -493,8 +493,8 @@ def load_or_construct_datasets(args):
             real_paths.extend(extract_bonafide_from_protocol(proto, audio_dir))
 
         # Match split sizes with a reference spoof CSV
-        example_train_csv = os.path.join(f"csv_dir/{args.corpus}/fake_audio/multiclass/csv_files_split_per_class/train/A01.csv")
-        example_test_csv  = os.path.join(f"csv_dir/{args.corpus}/fake_audio/multiclass/csv_files_split_per_class/test/A01.csv")
+        example_train_csv = os.path.join(f"csv_dir/{args.corpus}/fake_audio/multiclass/{args.seed}/csv_files_split_per_class/train/A01.csv")
+        example_test_csv  = os.path.join(f"csv_dir/{args.corpus}/fake_audio/multiclass/{args.seed}/csv_files_split_per_class/test/A01.csv")
         train_len = len(pd.read_csv(example_train_csv))
         val_len = test_len = len(pd.read_csv(example_test_csv))
 
@@ -511,6 +511,206 @@ def load_or_construct_datasets(args):
 
         print("ASVspoof CSVs created and split.")
 
+    elif args.corpus == "codecfake":
+        # Path to your txt file
+        txt_file = f"{args.protocol_path}/label/C7.txt"
+        basedir = f"{args.protocol_path}/C7/C7"
+        test_size = 0.1
+        val_size = 0.1111  # to make final split 80/10/10
+
+        # Read the txt file
+        data = []
+        mss_cnt = 0
+        with open(txt_file, "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) == 3:
+                    filename, type_str, label = parts
+                    full_path = os.path.join(basedir, filename)  # <-- directory containing wav files
+                    if os.path.exists(full_path):
+                        data.append({"filename": filename, "type": type_str, "label": int(label)})
+                    else:
+                        mss_cnt = mss_cnt + 1
+                        # print(f"Missing file: {full_path}")
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+        # Count samples per label
+        samples_per_category = df['label'].value_counts().sort_index()
+        print(samples_per_category)
+        print(f"Missing file count: {mss_cnt}")
+        # Separate real vs fake
+        real_df = df[df['label'] == 0].copy()
+        fake_df = df[df['label'] != 0].copy()
+
+        # --- Process each fake category individually ---
+        all_fake_train, all_fake_val, all_fake_test = [], [], []
+        dest_dir = f"csv_dir/{args.corpus}/fake_audio/multiclass"
+
+        for cat in sorted(fake_df['label'].unique()):
+            cat_df = fake_df[fake_df['label'] == cat]
+
+            cat_df['path'] = cat_df['filename'].apply(lambda x: os.path.join(basedir, x))
+            
+            # Split 80/10/10
+            train_val_df, test_df = train_test_split(cat_df, test_size=test_size, stratify=cat_df['label'], random_state=42)
+            train_df, val_df = train_test_split(train_val_df, test_size=val_size, stratify=train_val_df['label'], random_state=42)
+            # Save per category. Keep only 'path' and 'label'
+            # real_df_to_save = real_df[['path', 'label']]
+            train_df_to_save = train_df[['path', 'label']]
+            val_df_to_save = val_df[['path', 'label']]
+            test_df_to_save = test_df[['path', 'label']]
+            '''
+            test_df_to_save = test_df_to_save.sample(n=1323, random_state=42) 
+            # Path to your CSV
+            csv_path = "/USERSPACE/pizarm5k/github_fingerprint/fingerprint/csv_dir/codecfake/real_audio/multiclass/1/csv_files_split/test.csv"
+            # Read the CSV
+            df = pd.read_csv(csv_path)
+            # Randomly keep only 1323 rows (with header intact)
+            df_sampled = df.sample(n=1323, random_state=42)
+            # Save back to CSV (overwrite or choose a new file)
+            df_sampled.to_csv(csv_path, index=False)
+            '''
+            # Create directory where the CSVs will be saved
+            csv_files_split_dir_path = os.path.join(dest_dir, f'{args.seed}/csv_files_split_per_class')
+            # Ensure the directory exists before saving
+            os.makedirs(f'{csv_files_split_dir_path}/train', exist_ok=True)
+            os.makedirs(f'{csv_files_split_dir_path}/val', exist_ok=True)
+            os.makedirs(f'{csv_files_split_dir_path}/test', exist_ok=True)
+
+            # real_df_to_save.to_csv(f"real.csv", index=False)
+            train_df_to_save.to_csv(f"{csv_files_split_dir_path}/train/C{cat}.csv", index=False)
+            val_df_to_save.to_csv(f"{csv_files_split_dir_path}/val/C{cat}.csv", index=False)
+            test_df_to_save.to_csv(f"{csv_files_split_dir_path}/test/C{cat}.csv", index=False)
+            
+            all_fake_train.append(train_df_to_save)
+            all_fake_val.append(val_df_to_save)
+            all_fake_test.append(test_df_to_save)
+
+        subsets_folder_path = os.path.join(
+            f'csv_dir/{args.corpus}/fake_audio', f'multiclass/{args.seed}/csv_files_split'
+        )
+        train_df, validate_df, test_df = get_train_validate_test_df(subsets_folder_path)
+        real_audio_csv_split_dir_path = os.path.join(f'csv_dir/{args.corpus}/real_audio/multiclass/{args.seed}/csv_files_split')
+        real_audio_train_df, real_audio_validate_df, real_audio_test_df = get_train_validate_test_df(real_audio_csv_split_dir_path)
+
+        '''
+        txt_file = f"{args.protocol_path}/label/train.txt"
+        basedir = f"{args.protocol_path}/train"
+        test_size = 0.1
+        val_size = 0.1111  # to make final split 80/10/10
+
+        subsets_folder_path = os.path.join(
+            f'csv_dir/{args.corpus}/fake_audio', f'multiclass/{args.seed}/csv_files_split'
+        )
+        real_audio_csv_split_dir_path = os.path.join(f'csv_dir/{args.corpus}/real_audio/multiclass/{args.seed}/csv_files_split')
+        if os.path.exists(subsets_folder_path) and False:
+            print("Dataset for the given seed was found. Loading...")
+            train_df, validate_df, test_df = get_train_validate_test_df(subsets_folder_path)
+            real_audio_train_df, real_audio_validate_df, real_audio_test_df = get_train_validate_test_df(real_audio_csv_split_dir_path)
+        else:
+            print(f"No dataset found for specified seed. Reconstructing dataset initialized...")
+            # Read the txt file
+            data = []
+            mss_cnt = 0
+            with open(txt_file, "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) == 3:
+                        filename, type_str, label = parts
+                        full_path = os.path.join(basedir, filename)  # <-- directory containing wav files
+                        if os.path.exists(full_path):
+                            data.append({"filename": filename, "type": type_str, "label": int(label)})
+                        else:
+                            mss_cnt = mss_cnt + 1
+                            # print(f"Missing file: {full_path}")
+            # Convert to DataFrame
+            df = pd.DataFrame(data)
+            # Count samples per label
+            samples_per_category = df['label'].value_counts().sort_index()
+            print(samples_per_category)
+            print(f"Missing file count: {mss_cnt}")
+            # Separate real vs fake
+            real_df = df[df['label'] == 0].copy()
+            fake_df = df[df['label'] != 0].copy()
+
+            # Prepend basedir to filename
+            real_df['path'] = real_df['filename'].apply(lambda x: os.path.join(basedir, x))
+            # Split 80/10/10
+            train_val_df, test_df = train_test_split(real_df, test_size=test_size, stratify=real_df['label'], random_state=42)
+            train_df, val_df = train_test_split(train_val_df, test_size=val_size, stratify=train_val_df['label'], random_state=42)
+            
+            # Save per category. Keep only 'path' and 'label'
+            real_df_to_save = real_df[['path', 'label']]
+            train_df_to_save = train_df[['path', 'label']]
+            val_df_to_save = val_df[['path', 'label']]
+            test_df_to_save = test_df[['path', 'label']]
+
+            dest_dir = f"csv_dir/{args.corpus}/real_audio/multiclass"
+            # Create directory where the CSVs will be saved
+            csv_files_split_dir_path = os.path.join(dest_dir, f'{args.seed}/csv_files_split')
+            csv_files_all_dir_path = os.path.join(dest_dir, f'{args.seed}/csv_files')
+            # Ensure the directory exists before saving
+            os.makedirs(csv_files_split_dir_path, exist_ok=True)
+            os.makedirs(csv_files_all_dir_path, exist_ok=True)
+
+            real_df_to_save.to_csv(f"{csv_files_all_dir_path}/real.csv", index=False)
+            train_df_to_save.to_csv(f"{csv_files_split_dir_path}/train.csv", index=False)
+            val_df_to_save.to_csv(f"{csv_files_split_dir_path}/val.csv", index=False)
+            test_df_to_save.to_csv(f"{csv_files_split_dir_path}/test.csv", index=False)
+
+            # --- Process each fake category individually ---
+            all_fake_train, all_fake_val, all_fake_test = [], [], []
+            dest_dir = f"csv_dir/{args.corpus}/fake_audio/multiclass"
+
+            for cat in sorted(fake_df['label'].unique()):
+                cat_df = fake_df[fake_df['label'] == cat]
+
+                cat_df['path'] = cat_df['filename'].apply(lambda x: os.path.join(basedir, x))
+                
+                file_df_to_save = cat_df[['path', 'label']]
+                # Create directory where the CSVs will be saved
+                csv_files_split_dir_path = os.path.join(dest_dir, f'{args.seed}/csv_files')
+                # Ensure the directory exists before saving
+                os.makedirs(f'{csv_files_split_dir_path}', exist_ok=True)
+                file_df_to_save.to_csv(f"{csv_files_split_dir_path}/{cat}.csv", index=False)
+
+                # Split 80/10/10
+                train_val_df, test_df = train_test_split(cat_df, test_size=test_size, stratify=cat_df['label'], random_state=42)
+                train_df, val_df = train_test_split(train_val_df, test_size=val_size, stratify=train_val_df['label'], random_state=42)
+                # Save per category. Keep only 'path' and 'label'
+                # real_df_to_save = real_df[['path', 'label']]
+                train_df_to_save = train_df[['path', 'label']]
+                val_df_to_save = val_df[['path', 'label']]
+                test_df_to_save = test_df[['path', 'label']]
+
+                # Create directory where the CSVs will be saved
+                csv_files_split_dir_path = os.path.join(dest_dir, f'{args.seed}/csv_files_split_per_class')
+                # Ensure the directory exists before saving
+                os.makedirs(f'{csv_files_split_dir_path}/train', exist_ok=True)
+                os.makedirs(f'{csv_files_split_dir_path}/val', exist_ok=True)
+                os.makedirs(f'{csv_files_split_dir_path}/test', exist_ok=True)
+
+                # real_df_to_save.to_csv(f"real.csv", index=False)
+                train_df_to_save.to_csv(f"{csv_files_split_dir_path}/train/{cat}.csv", index=False)
+                val_df_to_save.to_csv(f"{csv_files_split_dir_path}/val/{cat}.csv", index=False)
+                test_df_to_save.to_csv(f"{csv_files_split_dir_path}/test/{cat}.csv", index=False)
+                
+                all_fake_train.append(train_df_to_save)
+                all_fake_val.append(val_df_to_save)
+                all_fake_test.append(test_df_to_save)
+
+            # Create directory where the CSVs will be saved
+            csv_files_split_dir_path = os.path.join(dest_dir, f'{args.seed}/csv_files_split')
+            # Ensure the directory exists before saving
+            os.makedirs(f'{csv_files_split_dir_path}', exist_ok=True)
+            
+            # --- Combine all fake categories into single train/val/test CSVs ---
+            pd.concat(all_fake_train).to_csv(f'{csv_files_split_dir_path}/train.csv', index=False)
+            pd.concat(all_fake_val).to_csv(f'{csv_files_split_dir_path}/val.csv', index=False)
+            pd.concat(all_fake_test).to_csv(f'{csv_files_split_dir_path}/test.csv', index=False)
+            train_df, validate_df, test_df = get_train_validate_test_df(subsets_folder_path)
+            real_audio_train_df, real_audio_validate_df, real_audio_test_df = get_train_validate_test_df(real_audio_csv_split_dir_path)
+        '''
     else:
         raise ValueError(f"Unknown corpus: {args.corpus}")
 
@@ -519,10 +719,10 @@ def load_or_construct_datasets(args):
 def get_caching_paths(cache_dir: str, 
                       args: dict, 
                       target_model: str) -> dict:
-    fingerprint_path = f"{cache_dir}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_fingerprint.pickle"
-    invcov_path = f"{cache_dir}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_invcov.pickle"
+    fingerprint_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_fingerprint.pickle"
+    invcov_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_invcov.pickle"
     # trend path is only accessed if args.trend_correction==True
-    trend_path = f"{cache_dir}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_trend.pickle"
+    trend_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_trend.pickle"
     return {"fingerprint": fingerprint_path, "invcov": invcov_path, "trend": trend_path}
 
 def pad_and_concatenate(tensor_list, concat_dim=0):

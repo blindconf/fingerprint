@@ -56,7 +56,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # Dataset selection: ljspeech, jsut, or asvspoof
-    parser.add_argument("--corpus", choices=["ljspeech", "jsut", "asvspoof"], default="ljspeech")
+    parser.add_argument("--corpus", choices=["ljspeech", "jsut", "asvspoof", "codecfake"], default="ljspeech")
     parser.add_argument("--real-data-path", help="Directory of real audio")
     parser.add_argument("--fake-data-path", help="Directory of fake audio")
     parser.add_argument("--protocol-path", type=str, help="Path to ASVspoof protocol file (required for asvspoof corpus)")
@@ -167,6 +167,8 @@ def main(args):
 
     # Assume train_df is already defined and loaded
     attack_labels = sorted(train_df["label"].unique())
+    attack_test_labels = sorted(test_df["label"].unique())
+
     fingerprints = {}
     CORPUS_DICT_REVERSE = {v: k for k, v in DATASETS[args.corpus].items()}
     finger_folder = f"trained_models/fingerprint/{args.corpus}/{args.seed}/{args.filter_type}"
@@ -175,6 +177,7 @@ def main(args):
     num_train_data_dict = {}
     # Loop over each attack label (each fake model) to train a dedicated fingerprint.
     for label in attack_labels:
+        os.makedirs(f"{finger_folder}/{CORPUS_DICT_REVERSE[label]}", exist_ok=True)
         attack_df = train_df[train_df["label"] == label] # .sample(n=25, random_state=42)
         # Sanity check for Mahalanobis scoring function
         args.num_train = len(attack_df)
@@ -192,7 +195,7 @@ def main(args):
         dataset = AudioDataSet(
             annotation_df=attack_df[["path"]],  # Only keep the 'path' column
             target_sample_rate=args.sample_rate,
-            train_nrows=len(attack_df),
+            train_nrows=False,
             deterministic=args.deterministic,
             device=device
         )
@@ -208,7 +211,6 @@ def main(args):
         fingerprint_path = caching_paths['fingerprint']# .strip()
         
         # If fingerprint is not precomputed, train it now and optionally cache it.
-        # print(fingerprint_path)
         if not os.path.isfile(fingerprint_path): 
             logger.info("======================================")
             logger.info(f"Processing {CORPUS_DICT_REVERSE[label]}!")
@@ -283,7 +285,8 @@ def main(args):
                                     collate_fn=collate_fn
                                     )
 
-            for label_test in attack_labels:    
+            for label_test in attack_test_labels:
+                
                 test_df_ = test_df[test_df["label"] == label_test] 
                 dataset_test = AudioDataSet(
                     annotation_df=test_df_[["path"]],  # Only keep the 'path' column
@@ -305,11 +308,12 @@ def main(args):
                 else:    
                     output = wrapper.forward(audio_test_dataloader, cutoff=args.cutoff, corruption_type=args.corruption_type, scale_factor=args.scale_factor)
                 outputs[label_test] = output.cpu().tolist()
-            
+                
+            # '''
             if args.filter_type != 'Oracle':
                 output = wrapper.forward(real_audio_dataloader, cutoff=args.cutoff)
                 outputs[0] = output.cpu().tolist()
-
+            # '''
             auc_results[f"{CORPUS_DICT_REVERSE[label]}"] = []
 
             for key_dict in outputs.keys():
