@@ -209,7 +209,7 @@ def main(args):
         # os.makedirs(f"{plot_path}/{folder_name}", exist_ok=True)
         caching_paths = get_caching_paths(cache_dir=finger_folder, args=args, target_model=CORPUS_DICT_REVERSE[label])
         fingerprint_path = caching_paths['fingerprint']# .strip()
-        
+        print(fingerprint_path)
         # If fingerprint is not precomputed, train it now and optionally cache it.
         if not os.path.isfile(fingerprint_path): 
             logger.info("======================================")

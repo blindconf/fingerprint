@@ -39,7 +39,7 @@ def set_seed(seed):
     except Exception as e:
         print("torch.use_deterministic_algorithms is not available. Consider upgrading PyTorch for full determinism.")
 
-def get_model(model, classification_type):
+def get_model(model, classification_type, input_size):
     # Set correct model based on passed arguments
     print(f'Set up the {model} model...')
 
@@ -61,8 +61,9 @@ def get_model(model, classification_type):
         model = X_vector(input_dim=60, num_classes=num_classes)
     elif (model == "vfd-resnet"):
         model = resnet18(num_classes=num_classes)
-    elif (model == "fingerprints"):
-        model = MLPClassifier()
+    elif (model == "fingerprint"):
+        model = MLPClassifier(input_size=input_size)
+
     return model
 
 
@@ -76,7 +77,7 @@ def get_optimizer_scheduler_loss_function(model, my_model, classification_type):
         if "binary" in classification_type:
             loss_function =  vfd_loss_function_binary
 
-    elif model == "fingerprints":
+    elif model == "fingerprint":
 
         optimizer = Adam(my_model.parameters(), lr=0.001)
         scheduler = LinearLR(optimizer=optimizer, total_iters=100)

@@ -8,12 +8,12 @@ from tabulate import tabulate
 from torch.nn import DataParallel
 import torch
 from torchmetrics import AUROC, F1Score, Precision, Recall, Accuracy, ConfusionMatrix
-from src.training.invariables import CLASSES, DEV, DEVICE_IDS, FINGERPRINT_DIR, MEAN_STD_FOLDER_DIR, URL_DIR_TO_SAVE_MODELS_AND_LOGS, BATCH_SIZE
+from src.training.invariables import CLASSES, DEV, DEVICE_IDS, BATCH_SIZE
 from src.training.utility import get_metric, get_model, get_optimizer_scheduler_loss_function, save_confusion_matrix_to_excel, save_heatmap, set_seed
 from src.datasets.utility import fingerprints_collate_fn, get_datasets
 from torch.utils.data import DataLoader
 import argparse
-from src.datasets.custom_dataset import waveform_to_residual
+from src.datasets.custom_dataset import waveform_to_residual, WaveformToAvgSpec
 import pandas as pd
 from src.training.arguments import CLASSIFICATION_TYPES, PERFORMANCE_METRICS
 from tqdm import tqdm
@@ -21,63 +21,79 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 import re
+import glob
+from src.datasets.filters import filter_fn
 
 
-def load_fingerprints(fingerprint_dir, classes):
+def load_fingerprints(args, classes):
     fingerprints = {}
-    transformation_keywords = ["Avg_Spec", "Avg_MFCC", "Avg_Mel"]
 
-    for vocoder_dir in sorted(os.listdir(fingerprint_dir)):
-        
+    for vocoder_dir in sorted(os.listdir(args.fing_path)):
         if not vocoder_dir in classes:
             continue
-        vocoder_path = os.path.join(fingerprint_dir, vocoder_dir)
+        vocoder_path = os.path.join(args.fing_path, vocoder_dir)
 
         if not os.path.isdir(vocoder_path):
             continue
-        
-        fingerprint_files = sorted([f for f in os.listdir(vocoder_path) if f.endswith("_fingerprint.pickle")])
-        invcov_files = sorted([f for f in os.listdir(vocoder_path) if f.endswith("_invcov.pickle")])
+        # Find the unique fingerprint file        
+
+        # All fingerprint files in that folder
+        all_fingerprints = glob.glob(os.path.join(vocoder_path, "*_fingerprint.pickle"))
+        # Filter the one that matches your known partial prefix
+        partial_prefix = f"param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}"
+        matches = [f for f in all_fingerprints if os.path.basename(f).startswith(partial_prefix)]
+
+        if len(matches) == 0:
+            raise FileNotFoundError(f"No fingerprint file found in {vocoder_path}")
+        elif len(matches) > 1:
+            raise RuntimeError(f"More than one fingerprint file found in {vocoder_path}: {matches}")
+        else:
+            fingerprint_files = matches[0]
+
+        all_invcov = glob.glob(os.path.join(vocoder_path, "*_invcov.pickle"))
+        # Filter the one that matches your known partial prefix
+        partial_prefix = f"param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}"
+        matches = [f for f in all_fingerprints if os.path.basename(f).startswith(partial_prefix)]
+
+        if len(matches) == 0:
+            raise FileNotFoundError(f"No covariance file found in {vocoder_path}")
+        elif len(matches) > 1:
+            raise RuntimeError(f"More than one covariance file found in {vocoder_path}: {matches}")
+        else:
+            invcov_files = matches[0]
 
         if len(fingerprint_files) != len(invcov_files):
             raise ValueError(f"Mismatch in number of fingerprint and invcov files in {vocoder_dir}")
         
-        for fp_file, invcov_file in zip(fingerprint_files, invcov_files):
-            # Extract parameters from filenames
-            params = {}
-            transformation_type = None
+        # Extract parameters from filenames
+        params = {}
+        transformation_type = "Avg_Spec"
+        
+        fp_file= os.path.basename(fingerprint_files)
+        filename_parts = fp_file.replace(".pickle", "").split("_")
+        for item in filename_parts:
+            key_value = item.split("=")
+            if len(key_value) == 2:
+                params[key_value[0]] = key_value[1]
 
-            # Search for transformation keywords in the filename
-            for keyword in transformation_keywords:
-                if keyword in fp_file:
-                    transformation_type = keyword
-                    break  # Stop searching once a match is found
-            
-            filename_parts = fp_file.replace(".pickle", "").split("_")
-            for item in filename_parts:
-                key_value = item.split("=")
-                if len(key_value) == 2:
+        params["transformation_type"] = transformation_type
 
-                    params[key_value[0]] = key_value[1]
+        # Load fingerprint and invcov
+        with open(fingerprint_files, "rb") as f:
+            fingerprint = pickle.load(f)
+        with open(invcov_files, "rb") as f:
+            invcov = pickle.load(f)
 
-            params["transformation_type"] = transformation_type
+        # Initialize vocoder dictionary if not already present
+        if vocoder_dir not in fingerprints:
+            fingerprints[vocoder_dir] = []
 
-            # Load fingerprint and invcov
-            with open(os.path.join(vocoder_path, fp_file), "rb") as f:
-                fingerprint = pickle.load(f)
-            with open(os.path.join(vocoder_path, invcov_file), "rb") as f:
-                invcov = pickle.load(f)
-
-            # Initialize vocoder dictionary if not already present
-            if vocoder_dir not in fingerprints:
-                fingerprints[vocoder_dir] = []
-
-            # Append the fingerprint and related data
-            fingerprints[vocoder_dir].append({
-                "fingerprint": fingerprint.to(DEV),
-                "invcov": invcov.to(DEV),
-                "params": params
-            })
+        # Append the fingerprint and related data
+        fingerprints[vocoder_dir].append({
+            "fingerprint": fingerprint.to(DEV),
+            "invcov": invcov.to(DEV),
+            "params": params
+        })
     # print("fingerprints: ", fingerprints)
     return fingerprints
 
@@ -201,41 +217,73 @@ if __name__ == "__main__":
     parser.add_argument("--classification_type", type=str, required=True, choices=CLASSIFICATION_TYPES, help="Classification type (binary or multiclass).")
     parser.add_argument("--seed", type=int, default=40, help="Seed for reproducibility.")
     #parser.add_argument('--save_id', type=int, required=True, help='ID for saving the scores.')
-    parser.add_argument('--proportional', action='store_true', default=False, help="Only for binary classification.")
     parser.add_argument('--performance_metric', type=str, choices=(PERFORMANCE_METRICS), default="f1_score", help='Performance metric.')
     parser.add_argument("--corruption_type", choices=[0, 1, 2], type=int, default=0, help="Evaluate under lossy conditions: 0 = no corruption, 1 = reverberation, 2 = MP3 compression.")
     parser.add_argument("--scale_factor", type=float, default=1.0, help="It compresses or dilates the given impulse response.")
     parser.add_argument("--use_nn", type=int, default=1, help='Set to 1 to use a DNN for the binary classifier under the fingerprint model, 0 to disable.')
+    parser.add_argument("--corpus", choices=["ljspeech", "jsut", "asvspoof", "codecfake"], default="ljspeech")
+    parser.add_argument("--filter_param", type=str, help="Parameter of the filter.")
+    parser.add_argument("--save_path", type=str, default="1", help="save model path.")
+    parser.add_argument("--fing_path", type=str, help="fingerprint model path.")
+    parser.add_argument("--mean_std_dir", type=str, default="1", help="mean_std_dir path.")
+    parser.add_argument("--scorefunction", choices=["mahalanobis", "correlation"], default="mahalanobis", help="Type of scoring function to use.")
+    parser.add_argument("--nfft", type=int, default=128, help="Number of FFT points for creating the Spectrograms.")
+    parser.add_argument("--hop_len", type=int, default=2, help="Hop length for creating the Spectrograms.")
+    parser.add_argument("--filter_type", type=str, help="Type of filter to apply to the audio signal.")
+    parser.add_argument("--epochs", type=int, default=2, help="Number of epochs.")
 
     args = parser.parse_args()
     set_seed(args.seed)
+
+    if args.corpus == "jsut":
+        args.sample_rate = 24000
+    elif args.corpus == "ljspeech":
+        args.sample_rate = 22050
+    else:
+        args.sample_rate = 16000
 
     if "binary" in args.classification_type:
         num_classes = 1
     else:
         num_classes = int(re.findall(pattern=r'\d+', string=args.classification_type)[0])
-    model = "fingerprints"
+    model = "fingerprint"
 
+    x = []
+    if isinstance(args.filter_param, float): 
+        # Convert to int and then to string
+        args.filter_param = int(args.filter_param) if args.filter_param.is_integer() else args.filter_param 
+    file_in = open(f"spectral_filter_coefs/{args.filter_type}/{args.filter_param}khz.txt", 'r')
+
+    for y in file_in.read().split('\n'):
+        x.append(float(y))
+    coef = torch.tensor(x)
+    FILTER = filter_fn(1, coef, dev=DEV)
+    
+    AVG_SPEC =  WaveformToAvgSpec(n_fft=args.nfft, hop_length=args.hop_len, device=DEV).forward
     # Set up results
-    results_path = os.path.join(URL_DIR_TO_SAVE_MODELS_AND_LOGS, f'fingerprints/{args.classification_type}/{"proportional" if args.proportional else "non-proportional"}/{args.seed}')
+    results_path = args.save_path
 
     os.makedirs(results_path, exist_ok=True)
 
     # Load fingerprints
     # print("Path fingerprint ", f'{FINGERPRINT_DIR}/{str(args.seed)}', CLASSES[args.classification_type])
     # if args.classification_type != 'binary-10-mp3':
-    fingerprints = load_fingerprints(f'{FINGERPRINT_DIR}/{str(args.seed)}/low_pass_filter', CLASSES[args.classification_type])
-    
+
+    fingerprints = load_fingerprints(args, CLASSES[args.classification_type][args.corpus])
 
     # Load dataset loaders
     train_ds, validate_ds, test_ds, test_2_ds = get_datasets(
-        "fingerprints", 
+        model, 
         args.classification_type, 
         args.seed, 
-        "proportional" if args.proportional else "non-proportional",
         args.corruption_type, 
-        args.scale_factor)
-    
+        args.scale_factor,
+        args.corpus,
+        args.mean_std_dir,
+        args.sample_rate,
+        FILTER,
+        AVG_SPEC)
+
     generator = torch.Generator().manual_seed(args.seed)
     
     # Score/Train
@@ -284,7 +332,7 @@ if __name__ == "__main__":
             # print(original_lens)
             waveforms, labels = waveforms.to(DEV), labels.to(DEV)
             # print(waveforms)
-            residuals = waveform_to_residual(waveforms, original_lens)
+            residuals = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
             # print(residuals, residuals.shape)
             # print("fingerprints", fingerprints)
             if args.classification_type == "multiclass-10-ae":
@@ -311,16 +359,15 @@ if __name__ == "__main__":
         # if not args.use_residuals:  # Mahalanbis scores
         
         # Get model
-        my_model = get_model(model=model, classification_type=args.classification_type)
+
+        my_model = get_model(model=model, classification_type=args.classification_type, input_size=args.nfft // 2 + 1)
         my_model = DataParallel(my_model, device_ids=DEVICE_IDS).to(DEV)
 
         # Get optimizer, scheduler and loss function
         optimizer, scheduler, loss_function = get_optimizer_scheduler_loss_function(model=model, my_model=my_model, classification_type=args.classification_type)
 
         # Get mean and std
-        dir = os.path.join(MEAN_STD_FOLDER_DIR, "binary-10")
-        dir = os.path.join(dir, "proportional" if args.proportional else "non-proportional")
-        dir = os.path.join(dir, "residuals")
+        dir = os.path.join(args.mean_std_dir, "residuals")
         dir = os.path.join(dir, str(args.seed))
 
         # print("Mean and var paths: ", dir)
@@ -346,27 +393,12 @@ if __name__ == "__main__":
             columns=["Testing_Accuracy", "Testing_F1_Score", "Testing_Precision", "Testing_Recall", "Testing_AUROC"]
         )      
 
-        # print("Binary model: ", f'{results_path}/best_model.pth')
+        print("Binary model: ", f'{results_path}/best_model.pth')
         if not os.path.exists(f'{results_path}/best_model.pth'):
             print(f'Initializing {model} model training...')
 
             train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=True, pin_memory=True, generator=generator, shuffle=True, collate_fn=fingerprints_collate_fn)
             validation_loader = DataLoader(validate_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=fingerprints_collate_fn)
-            '''
-            # Set up wandb
-            wandb.init(
-                # set the wandb project where this run will be logged
-                project=f'{model}-{args.classification_type}-{args.seed}',
-
-                # track hyperparameters and run metadata
-                config={
-                "architecture": f'{model}',
-                "classification_type": f'{args.classification_type}',
-                "epochs": 100,
-                },
-                name=datetime.now().strftime("%Y-%m-%d_%H:%M:%S"),
-            )
-            '''
 
             # Create performance dataframe for training/validating
             training_validating_score_df = pd.DataFrame(
@@ -376,10 +408,9 @@ if __name__ == "__main__":
                         "Validating_Recall", "Training_AUROC", "Validating_AUROC"])
 
             # Training loop
-            epochs = 5 # 25 # 100
             best_score = 0
             print('Training started...')
-            for epoch in tqdm(range(epochs), desc="Training Epochs"):
+            for epoch in tqdm(range(args.epochs), desc="Training Epochs"):
 
                 # Reset metrics
                 accuracy.reset(), f1.reset(), precision.reset()
@@ -391,8 +422,8 @@ if __name__ == "__main__":
                 running_loss = 0.0
                 train_batches = len(train_loader)
 
-                mean[:, None].fill_(0)
-                std[:, None].fill_(1)
+                # mean[:, None].fill_(0)
+                # std[:, None].fill_(1)
 
                 for waveforms, labels, original_lens in tqdm(train_loader, desc="Training batches"):
                     
@@ -400,16 +431,15 @@ if __name__ == "__main__":
                     labels = labels.float().unsqueeze(1)
                     waveforms, labels = waveforms.to(DEV), labels.to(DEV)
 
-                    residuals = waveform_to_residual(waveforms, original_lens)
+                    residuals = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
 
                     # Normalize
-                    residuals = (residuals - mean[:, None]) / std[:, None]
+                    residuals = (residuals - mean[:, None]) / (std[:, None] + 1e-8)
 
                     # Zero gradients
                     optimizer.zero_grad()
 
                     # Forward pass
-                    
                     outputs = my_model(residuals)
 
                     loss = loss_function(outputs, labels)
@@ -430,10 +460,6 @@ if __name__ == "__main__":
                     recall.update(preds, labels)
                     auroc.update(probabilities, labels)
 
-                    # print("loss: ", loss)
-                    # print("preds: ", preds)
-                    # print("probabilities: ", probabilities)
-
                 # Get scores
                 training_loss = running_loss / train_batches
                 training_accuracy = accuracy.compute().item()
@@ -441,7 +467,6 @@ if __name__ == "__main__":
                 training_precesion = precision.compute().item()
                 training_recall = recall.compute().item()
                 training_auroc = auroc.compute().item()
-
 
                 # === Validation Phase ===
                 # Reset metrics
@@ -455,10 +480,10 @@ if __name__ == "__main__":
 
                         labels = labels.float().unsqueeze(1)
                         waveforms, labels = waveforms.to(DEV), labels.to(DEV)
-                        residuals = waveform_to_residual(waveforms, original_lens)
+                        residuals = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
                         
                         # Normalize
-                        residuals = (residuals - mean[:, None]) / std[:, None]
+                        residuals = (residuals - mean[:, None]) / (std[:, None] + 1e-8)
 
                         # Forward pass
                         outputs = my_model(residuals)
@@ -546,35 +571,28 @@ if __name__ == "__main__":
         # my_model.load_state_dict(torch.load(f'{results_path}/best_model.pth'))
 
         my_model.eval()
-        # Comment line below test_2_ds = None to try testing your data to unsenn datamodels. 
-        test_2_ds = None
-        if test_2_ds is not None:
-            testing_score_2_df = pd.DataFrame(
-            columns=["Testing_Accuracy", "Testing_F1_Score", "Testing_Precision", "Testing_Recall", "Testing_AUROC"]
-            ) 
-            # Reset Metrics
-            accuracy.reset(), f1.reset(), precision.reset()
-            recall.reset(), confusion_matrix.reset(), auroc.reset()
 
-            test_2_loader = DataLoader(test_2_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=fingerprints_collate_fn)
+        # Reset Metrics
+        accuracy.reset(), f1.reset(), precision.reset()
+        recall.reset(), confusion_matrix.reset(), auroc.reset()
+        # num_workers=24,
+        test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=fingerprints_collate_fn)
 
-            with torch.no_grad():
-                for waveforms, labels, original_lens in tqdm(test_2_loader, desc="Testing batches"):
-                    labels = labels.float().unsqueeze(1)
-                    waveforms, labels = waveforms.to(DEV), labels.to(DEV)
-
-                    residuals = waveform_to_residual(waveforms, original_lens)
+        with torch.no_grad():
+            for waveforms, labels, original_lens in tqdm(test_loader, desc="Testing batches"):
+                labels = labels.float().unsqueeze(1)
+                waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                if args.use_nn:
+                    residuals = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
 
                     # Normalize
-                    residuals = (residuals - mean[:, None]) / std[:, None]
-
-                    # residuals = residuals - residuals.mean(dim=-1, keepdim=True)
-                    # residuals = residuals / residuals.norm(dim=-1, keepdim=True)
+                    residuals = (residuals - mean[:, None]) / (std[:, None] + 1e-8)
                     # Forward pass
                     outputs = my_model(residuals)
 
                     probabilities = torch.nn.functional.sigmoid(outputs)
                     preds = (probabilities > 0.5).float()
+
                     # Update Metrics
                     accuracy.update(preds, labels)
                     f1.update(preds, labels)
@@ -582,139 +600,65 @@ if __name__ == "__main__":
                     recall.update(preds, labels)
                     confusion_matrix.update(preds, labels)
                     auroc.update(probabilities, labels)
-
+                else:
+                    residuals = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
+                    # print(residuals, residuals.shape)
+                    # print("fingerprints", fingerprints)
+                    scores = compute_mahalanobis_scores(residuals, fingerprints)
+                    # Get the minimum value per row
+                    score_min, row_min_indices = torch.min(torch.abs(scores), dim=1)
+                    score_min = -score_min
+                    # Update Metrics
+                    auroc.update(score_min.unsqueeze(1), labels)
             
-            # Get test scores
-            testing_accuracy = accuracy.compute().item()
-            testing_f1_score = f1.compute().item()
-            testing_precision = precision.compute().item()
-            testing_recall = recall.compute().item()
-            testing_confusion_matrix = confusion_matrix.compute()
-            testing_auroc = auroc.compute().item()    
-
-            # Save test scores to dict
-            testing_scores_2_dict = {
-                "Testing_Accuracy": testing_accuracy,
-                "Testing_F1_Score": testing_f1_score,
-                "Testing_Precision": testing_precision,
-                "Testing_Recall": testing_recall,
-                "Testing_AUROC": testing_auroc,
-            }
-
-            # Print test metrics
-            print("\n")
-            table = [[key, value] for key, value in testing_scores_2_dict.items()]
-            print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
-            print("\n")
-            
-            
-            # Add scores to dataframes
-            testing_score_2_df.loc[len(testing_score_2_df)] = testing_scores_2_dict  
-
-            # Save scores
-            testing_score_2_df.to_excel(f'{results_path}/testing_scores_2.xlsx', index=False)
-            # save_confusion_matrix_to_excel(conf_matrix=testing_confusion_matrix, destination_url=results_path, classification_type=args.classification_type)
-            # save_heatmap(conf_matrix=testing_confusion_matrix.cpu().numpy(), destination_url=results_path, classification_type=args.classification_type)
-        else:
-            # Reset Metrics
-            accuracy.reset(), f1.reset(), precision.reset()
-            recall.reset(), confusion_matrix.reset(), auroc.reset()
-            # num_workers=24,
-            test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE[model], num_workers=24, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=fingerprints_collate_fn)
-
-            with torch.no_grad():
-                for waveforms, labels, original_lens in tqdm(test_loader, desc="Testing batches"):
-                    labels = labels.float().unsqueeze(1)
-                    waveforms, labels = waveforms.to(DEV), labels.to(DEV)
-                    if args.use_nn:
-                        residuals = waveform_to_residual(waveforms, original_lens)
-
-                        # Normalize
-                        residuals = (residuals - mean[:, None]) / std[:, None]
-                        # residuals = residuals - residuals.mean(dim=-1, keepdim=True)
-                        # residuals = residuals / residuals.norm(dim=-1, keepdim=True)
-                        # Forward pass
-                        outputs = my_model(residuals)
-
-                        probabilities = torch.nn.functional.sigmoid(outputs)
-                        preds = (probabilities > 0.5).float()
-
-                        # print(labels, preds)
-                        # print(asfs)
-                        # Update Metrics
-                        accuracy.update(preds, labels)
-                        f1.update(preds, labels)
-                        precision.update(preds, labels)
-                        recall.update(preds, labels)
-                        confusion_matrix.update(preds, labels)
-                        auroc.update(probabilities, labels)
-                    else:
-                        residuals = waveform_to_residual(waveforms, original_lens)
-                        # print(residuals, residuals.shape)
-                        # print("fingerprints", fingerprints)
-                        scores = compute_mahalanobis_scores(residuals, fingerprints)
-                        # Get the minimum value per row
-                        score_min, row_min_indices = torch.min(torch.abs(scores), dim=1)
-                        score_min = -score_min
-                        # print(score_min, torch.abs(score_min), labels)
-                        # print(asfsaf)
-                        # print(score_min.shape, labels.shape, score_min.unsqueeze(1).shape)
-                        # Update Metrics
-                        # if labels == 0:
-                        # (labels, score_min)
-                        auroc.update(score_min.unsqueeze(1), labels)
-                        # preds_tensor = assign_vocoders(scores)
-                        # all_preds.append(preds_tensor)
-                        # all_labels.append(labels)
-                
-            if args.use_nn == 0:
-                testing_auroc = auroc.compute().item()  
-                testing_scores_dict = {
-                    "Testing_AUROC": testing_auroc,
-                }
-                # Print test metrics
-                print("\n")
-                table = [[key, value] for key, value in testing_scores_dict.items()]
-                print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
-                print("\n")
-                # Add scores to dataframes
-                testing_score_df.loc[len(testing_score_df)] = testing_scores_dict  
-
-                # Save scores
-                testing_score_df.to_excel(f'{results_path}/testing_scores_{args.corruption_type}_factor{args.scale_factor}_NN{args.use_nn}.xlsx', index=False)
-                sys.exit(0)
-
-            # Get test scores
-            testing_accuracy = accuracy.compute().item()
-            testing_f1_score = f1.compute().item()
-            testing_precision = precision.compute().item()
-            testing_recall = recall.compute().item()
-            testing_confusion_matrix = confusion_matrix.compute()
-            testing_auroc = auroc.compute().item()    
-
-            # Save test scores to dict
+        if args.use_nn == 0:
+            testing_auroc = auroc.compute().item()  
             testing_scores_dict = {
-                "Testing_Accuracy": testing_accuracy,
-                "Testing_F1_Score": testing_f1_score,
-                "Testing_Precision": testing_precision,
-                "Testing_Recall": testing_recall,
                 "Testing_AUROC": testing_auroc,
             }
-
             # Print test metrics
             print("\n")
             table = [[key, value] for key, value in testing_scores_dict.items()]
             print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
             print("\n")
-            
-            
             # Add scores to dataframes
             testing_score_df.loc[len(testing_score_df)] = testing_scores_dict  
 
             # Save scores
             testing_score_df.to_excel(f'{results_path}/testing_scores_{args.corruption_type}_factor{args.scale_factor}_NN{args.use_nn}.xlsx', index=False)
-            save_confusion_matrix_to_excel(conf_matrix=testing_confusion_matrix, destination_url=results_path, classification_type=args.classification_type, corruption_type=args.corruption_type, scale_factor=args.scale_factor, NN_flg=args.use_nn)
-            save_heatmap(conf_matrix=testing_confusion_matrix.cpu().numpy(), destination_url=results_path, classification_type=args.classification_type, corruption_type=args.corruption_type, scale_factor=args.scale_factor, NN_flg=args.use_nn)
+            sys.exit(0)
+
+        # Get test scores
+        testing_accuracy = accuracy.compute().item()
+        testing_f1_score = f1.compute().item()
+        testing_precision = precision.compute().item()
+        testing_recall = recall.compute().item()
+        testing_confusion_matrix = confusion_matrix.compute()
+        testing_auroc = auroc.compute().item()    
+
+        # Save test scores to dict
+        testing_scores_dict = {
+            "Testing_Accuracy": testing_accuracy,
+            "Testing_F1_Score": testing_f1_score,
+            "Testing_Precision": testing_precision,
+            "Testing_Recall": testing_recall,
+            "Testing_AUROC": testing_auroc,
+        }
+
+        # Print test metrics
+        print("\n")
+        table = [[key, value] for key, value in testing_scores_dict.items()]
+        print(tabulate(table, headers=["Metric", "Value"], tablefmt="grid"))
+        print("\n")
+        
+        
+        # Add scores to dataframes
+        testing_score_df.loc[len(testing_score_df)] = testing_scores_dict  
+
+        # Save scores
+        testing_score_df.to_excel(f'{results_path}/testing_scores_{args.corruption_type}_factor{args.scale_factor}_NN{args.use_nn}.xlsx', index=False)
+        save_confusion_matrix_to_excel(conf_matrix=testing_confusion_matrix, destination_url=results_path, classification_type=args.classification_type, corruption_type=args.corruption_type, scale_factor=args.scale_factor, NN_flg=args.use_nn)
+        save_heatmap(conf_matrix=testing_confusion_matrix.cpu().numpy(), destination_url=results_path, classification_type=args.classification_type, corruption_type=args.corruption_type, scale_factor=args.scale_factor, NN_flg=args.use_nn)
 
         print("Scores saved...")
 

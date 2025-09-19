@@ -5,7 +5,7 @@ import csv
 from sklearn.model_selection import train_test_split
 from torch import stack
 from src.datasets.custom_dataset import CustomDataset
-from src.training.invariables import CSV_DIR_SRC, CSV_DIR_DEST, CLASSES, MEAN_STD_FOLDER_DIR, TARGET_SAMPLE_RATE, DEV
+from src.training.invariables import CLASSES, TARGET_SAMPLE_RATE, DEV
 from torch import stack
 import os
 from src.datasets.custom_dataset import waveform_to_residual
@@ -110,7 +110,7 @@ def fingerprints_collate_fn(batch):
     return signals, labels, original_lengths
 
 
-def compute_mean_std_and_save(ds, model, out_dir):
+def compute_mean_std_and_save(ds, model, out_dir, filter_fn, trans_fn):
 
     print("Computing mean and std over the train dataset...")
 
@@ -120,21 +120,12 @@ def compute_mean_std_and_save(ds, model, out_dir):
     sum_features = None
     sum_squared_features = None
     total_frames = 0
-    '''
-    processed_samples = 0
-    total_samples = len(ds)
-    postprocess = lambda signals: signals if model != "fingerprints" else waveform_to_residual(signals.unsqueeze(0), [signals.shape[-1]])   # Add batch dim
-    '''
-    # '''
-    #postprocess = lambda signals: signals if model != "fingerprints" else waveform_to_residual(
-    #    signals, [signals.shape[-1]] * signals.shape[0]
-    #)
 
     for batch_signals, labels, original_lens in tqdm(dl, desc="Processing batches", unit="batch"):
         batch_signals = batch_signals.to(DEV)  # (B, C, T)
 
-        if model == "fingerprints":
-            batch_signals = waveform_to_residual(batch_signals, original_lens)
+        if model == "fingerprint":
+            batch_signals = waveform_to_residual(batch_signals, filter_fn, trans_fn, original_lens)
         # print(batch_signals.shape)
         # Sum over batch and time dimensions
         if sum_features is None:
@@ -149,33 +140,7 @@ def compute_mean_std_and_save(ds, model, out_dir):
         del batch_signals
         torch.cuda.empty_cache()
         # break
-    # '''
-    '''
-    for i in range(total_samples):
-        
-        signals, _ = ds[i]
-        print(signals.shape, signals.unsqueeze(0).shape, [signals.shape[-1]])
-        signals = signals.to(DEV)
-        signals = postprocess(signals)
-        print(signals.shape)
-        # Running sum of features
-        if sum_features is None:
-            sum_features = signals.sum(dim=1)
-            sum_squared_features = (signals ** 2).sum(dim=1)
-        else:
-            sum_features += signals.sum(dim=1)
-            sum_squared_features += (signals ** 2).sum(dim=1)
 
-        total_frames += signals.shape[1]
-
-        # Update and display progress
-        processed_samples += 1
-        percentage_done = (processed_samples / total_samples) * 100
-        print(f"\rProgress: {percentage_done:.2f}% samples processed", end="")
-        print(sum_features.shape)
-        del signals
-        torch.cuda.empty_cache()
-    '''
     print("\nComputation complete.")
 
     # Compute final mean and std
@@ -306,10 +271,6 @@ def create_csv_from_dataset(dataset_path, dest_dir, classification_type, same_la
 
     return dest_dir
 
-
-import os
-import pandas as pd
-from sklearn.model_selection import train_test_split
 
 def create_proportional_train_validate_test_csvs(audio_dir, dest_dir, classification_type, seed):
     # Create fake audio dataset's csv if not existing
@@ -534,13 +495,11 @@ def create_train_validate_test_csvs(
 def get_train_validate_test_df(src_dir, corruption_type=None):
 
     dfs = []
-    print(src_dir)
     for subset in sorted(os.listdir(src_dir)):
         if corruption_type == 2 and subset == "test":
             subset_path = os.path.join(src_dir, f'{subset}/{subset}_mp3.csv')
         else:
-            subset_path = os.path.join(src_dir, f'{subset}/{subset}.csv')
-        print(corruption_type, subset_path)
+            subset_path = os.path.join(src_dir, f'{subset}')
         subset_df = pd.read_csv(subset_path)
 
         # Fix paths for specific vocoders → replace with *_gen.wav
@@ -568,19 +527,10 @@ def rewrite_path(path: str) -> str:
 
 def save_train_validate_test_dfs_to_csvs(csvs_dir, train_df, validate_df, test_df):
 
-    # Create directory where the CSVs will be saved
-    csv_files_split_train_dir_path = os.path.join(csvs_dir, 'train')
-    csv_files_split_validate_dir_path = os.path.join(csvs_dir, 'validate')
-    csv_files_split_test_dir_path = os.path.join(csvs_dir, 'test')
-
     # Ensure the directory exists before saving
     os.makedirs(csvs_dir, exist_ok=True)
-    os.makedirs(csv_files_split_train_dir_path, exist_ok=True)
-    os.makedirs(csv_files_split_validate_dir_path, exist_ok=True)
-    os.makedirs(csv_files_split_test_dir_path, exist_ok=True)
     
     # Sort dataset by file name
-
     train_df['tuple_key'] = train_df['path'].apply(lambda x: (x.split('/')[-1], x.split('/')[-2]))  # Create tuple (file name, vocoder name) to sort by two keys
     train_df.sort_values(by='tuple_key', inplace=True, ignore_index=True)
     train_df.drop(columns='tuple_key', inplace=True)
@@ -594,9 +544,9 @@ def save_train_validate_test_dfs_to_csvs(csvs_dir, train_df, validate_df, test_d
     test_df.drop(columns='tuple_key', inplace=True)
 
     # Save train, validate and test dataframes to csvs
-    train_df.to_csv(os.path.join(csv_files_split_train_dir_path, 'train.csv'), index=False)
-    validate_df.to_csv(os.path.join(csv_files_split_validate_dir_path, 'validate.csv'), index=False)
-    test_df.to_csv(os.path.join(csv_files_split_test_dir_path, 'test.csv'), index=False)
+    train_df.to_csv(os.path.join(csvs_dir, 'train.csv'), index=False)
+    validate_df.to_csv(os.path.join(csvs_dir, 'validate.csv'), index=False)
+    test_df.to_csv(os.path.join(csvs_dir, 'test.csv'), index=False)
 
     return train_df, validate_df, test_df
 
@@ -605,22 +555,20 @@ def get_mean_std(
     ds,
     model,
     classification_type,
-    proportional,
-    seed):
+    seed, 
+    mean_std_path,
+    filter_fn,
+    trans_fn):
 
-    dir = os.path.join(MEAN_STD_FOLDER_DIR, classification_type)
+    dir = os.path.join(mean_std_path)
 
-    if model == "fingerprints" and "multiclass" in classification_type: # No mean and std needed for samples scoring using mahalanobis distance
+    if model == "fingerprint" and "multiclass" in classification_type: # No mean and std needed for samples scoring using mahalanobis distance
         return None, None
-
-    if "binary" in classification_type:
-        dir = os.path.join(dir, proportional)
-
-    
+   
     if model == "vfd-resnet":
         dir = os.path.join(dir, "mel")
 
-    elif model == "fingerprints":
+    elif model == "fingerprint":
         dir = os.path.join(dir, "residuals")
     else:
         dir = os.path.join(dir, "lfcc")
@@ -628,11 +576,13 @@ def get_mean_std(
     # Create corresponding mean and std if not present
     dir = os.path.join(dir, str(seed))
     if not os.path.exists(dir): # not os.path.exists(dir):
-        print("Mean and std for the corresponding train dataset and gived seed not found.")
+        print(f"Mean and std for the corresponding train dataset and gived seed not found. {dir}")
         compute_mean_std_and_save(
             ds=ds,
             model=model,
-            out_dir=dir)
+            out_dir=dir,
+            filter_fn=filter_fn,
+            trans_fn=trans_fn)
 
     with open(os.path.join(dir, 'mean.pkl'), "rb") as f:
         mean = pickle.load(f)
@@ -642,11 +592,21 @@ def get_mean_std(
     return mean, std
 
 
-def get_datasets(model, classification_type, seed, proportional, corruption_type, scale_factor):
+def get_datasets(model, classification_type, seed, corruption_type, scale_factor, corpus, mean_std_dir, sample_rate, filter_fn, AVG_SPEC):
 
-    print(proportional)
     print(f'Searching for saved dataset for {classification_type} and given seed({seed})')
 
+    BASE_DIR = os.getcwd()  # gets the directory where you run the code
+
+    URL_DIR_TO_SAVE_FAKE_AUDIO_CSV_FILES = os.path.join(BASE_DIR, "csv_dir", corpus, "fake_audio", "multiclass")
+    URL_DIR_TO_SAVE_REAL_AUDIO_CSV_FILES = os.path.join(BASE_DIR, "csv_dir", corpus, "real_audio", "multiclass")
+    URL_DIR_TO_SAVE_MIX_AUDIO_CSV_FILES  = os.path.join(BASE_DIR, "csv_dir", corpus, "mix_audio")
+
+    CSV_DIR_DEST = {
+        "real_audio": URL_DIR_TO_SAVE_REAL_AUDIO_CSV_FILES,
+        "fake_audio": URL_DIR_TO_SAVE_FAKE_AUDIO_CSV_FILES,
+        "mix_audio": URL_DIR_TO_SAVE_MIX_AUDIO_CSV_FILES,
+    }
 
     if "multiclass" in classification_type:
 
@@ -655,26 +615,18 @@ def get_datasets(model, classification_type, seed, proportional, corruption_type
 
     else:   # "binary" in classification_type
         audio_type = "mix_audio"
-        subsets_folder_path = os.path.join(CSV_DIR_DEST[audio_type], f'{classification_type}/{proportional}/{seed}/csv_files_split')
+        subsets_folder_path = os.path.join(CSV_DIR_DEST[audio_type], f'{classification_type}/{seed}/csv_files_split')
     
     if os.path.exists(subsets_folder_path):
         print("Dataset for the given seed was found. Loading...")
-        # print(subsets_folder_path)
         train_df, validate_df, test_df = get_train_validate_test_df(subsets_folder_path, corruption_type)
-        # print(test_df)
-        '''
-        if classification_type == "binary-10":
-            subset_path = os.path.join(subsets_folder_path, f'test/test_2.csv')
-            # print("test_df ", subsets_folder_path)
-            # print("test_2_df ", subset_path)
-            test_2_df = pd.read_csv(subset_path)
-        '''
+
     else:   # New seed, dataset has to be reconstructed
         print(f'No dataset found for specified seed. Reconstructing dataset initialized...')
-
         # For fake audio, multiclass classification
         if audio_type == "fake_audio":
-            
+            '''
+            Need check
             train_df, validate_df, test_df = create_train_validate_test_csvs(
                 audio_dir=CSV_DIR_SRC["fake_audio"],
                 dest_dir=f'{CSV_DIR_DEST["fake_audio"]}/{classification_type}',
@@ -682,11 +634,11 @@ def get_datasets(model, classification_type, seed, proportional, corruption_type
                 seed=seed
             )
             print("Reconstruction complete")
+            '''
+            print("Need check!!!!!!!!!!! ")
 
         ### Construc mix audio dataset
-
         else:   # audio_type == "mix_audio"
-
             # Search for real train, validate and test csv files for given seed
             real_audio_csv_split_dir_path = os.path.join(CSV_DIR_DEST["real_audio"], f'{seed}/csv_files_split')
 
@@ -696,6 +648,8 @@ def get_datasets(model, classification_type, seed, proportional, corruption_type
 
             else:    # Real audio's csv have to be reconstructed
                 print("Construction for real audio's train, validate and test csvs for given seed in process...")
+                '''
+                # Need to be tested!!!!
                 os.makedirs(real_audio_csv_split_dir_path, exist_ok=True)
                 real_audio_train_df, real_audio_validate_df, real_audio_test_df = create_train_validate_test_csvs(
                     audio_dir=CSV_DIR_SRC["real_audio"],
@@ -704,109 +658,80 @@ def get_datasets(model, classification_type, seed, proportional, corruption_type
                     seed=seed
                 )
                 print("Reconstruction complete.")
+                '''
 
-            if proportional == "proportional":
+            # Non proportional
+            # Search for non-proportional fake audio csvs
+            print("Searching non-proportional, fake audio's train, validate and test sets...")
+            non_proportional_fake_audio_csvs_dir = os.path.join(CSV_DIR_DEST["fake_audio"], str(seed), "csv_files_split")
+            if os.path.exists(non_proportional_fake_audio_csvs_dir):
+                print("Fake audio dataset for specified seed found. Loadning...")
+                fake_audio_train_df, fake_audio_validate_df, fake_audio_test_df = get_train_validate_test_df(non_proportional_fake_audio_csvs_dir)
 
-                # Search for proportional fake audio csvs
-                print("Searching for proportional fake audio's train, validate and test csvs.")
-                proportional_fake_audio_csvs_dir = os.path.join(CSV_DIR_DEST["fake_audio"], f'{classification_type}/{proportional}/{seed}/csv_files_split')
-
-                if os.path.exists(proportional_fake_audio_csvs_dir):
-                    print("Proportional fake audio's train, validate and test csvs found. Loading...")
-                    proportional_fake_audio_train_df, proportional_fake_audio_validate_df, proportional_fake_audio_test_df = get_train_validate_test_df(proportional_fake_audio_csvs_dir)
-                
-                # Create proportional fake audio csvs
-                else:
-                    print("Proportional fake audio's train, validate and test csvs not found. Reconstructing...")
-                    proportional_fake_audio_train_df, proportional_fake_audio_validate_df, proportional_fake_audio_test_df = create_proportional_train_validate_test_csvs(
-                        audio_dir=CSV_DIR_SRC["fake_audio"],
-                        dest_dir=f'{CSV_DIR_DEST["fake_audio"]}/{classification_type}',
-                        classification_type=classification_type,
-                        seed=seed
-                    )
-                    print("Reconstruction for proportional fake audio's train, validate and test csvs completed.")
-
-                    train_df = pd.concat([real_audio_train_df, proportional_fake_audio_train_df])
-                    validate_df = pd.concat([real_audio_validate_df, proportional_fake_audio_validate_df])
-                    test_df = pd.concat([real_audio_test_df, proportional_fake_audio_test_df])
-
-                    # Save
-                    train_df, validate_df, test_df = save_train_validate_test_dfs_to_csvs(
-                        csvs_dir=os.path.join(CSV_DIR_DEST["mix_audio"], f'{classification_type}/{proportional}/{seed}/csv_files_split'),
-                        train_df=train_df,
-                        validate_df=validate_df,
-                        test_df=test_df
-                    )
-
-            else:   # Non proportional
-
-                # Search for non-proportional fake audio csvs
-                print("Searching non-proportional, fake audio's train, validate and test sets...")
-                non_proportional_fake_audio_csvs_dir = os.path.join(CSV_DIR_DEST["fake_audio"], f'{classification_type}/{proportional}/{seed}/csv_files_split')
-                if os.path.exists(non_proportional_fake_audio_csvs_dir):
-                    print("Fake audio dataset for specified seed found. Loadning...")
-                    non_proportional_fake_audio_train_df, non_proportional_fake_audio_validate_df, non_proportional_fake_audio_test_df = get_train_validate_test_df(non_proportional_fake_audio_csvs_dir)
-
-                else:    # Fake audio's train, validate and test csvs have to be reconstructed
-                    print("Not found. Reconstructing...")
-                    non_proportional_fake_audio_train_df, non_proportional_fake_audio_validate_df, non_proportional_fake_audio_test_df = create_train_validate_test_csvs(
-                        audio_dir=CSV_DIR_SRC["fake_audio"],
-                        dest_dir=f'{CSV_DIR_DEST["fake_audio"]}/{classification_type}/{proportional}',
-                        classification_type=classification_type,
-                        seed=seed,
-                        same_label=True,
-                        starting_label=1
-                    )
-
-                # Muliplicate real audio by the number of audio vocoders and concat real and fake audio subsets
-                train_temp = []
-                validate_temp = []
-                test_temp = []
-
-                for _ in range(len(CLASSES[classification_type])):
-                    train_temp.append(real_audio_train_df)
-                    validate_temp.append(real_audio_validate_df)
-                    test_temp.append(real_audio_test_df)
-
-                real_audio_train_df = pd.concat(train_temp)
-                real_audio_validate_df = pd.concat(validate_temp)
-                real_audio_test_df = pd.concat(test_temp)
-
-                print(f'real audio dataset multiplicated for {classification_type}')
-
-                train_df = pd.concat([real_audio_train_df, non_proportional_fake_audio_train_df])
-                validate_df = pd.concat([real_audio_validate_df, non_proportional_fake_audio_validate_df])
-                test_df = pd.concat([real_audio_test_df, non_proportional_fake_audio_test_df])
-
-                # Save dataframes to csvs
-                train_df, validate_df, test_df = save_train_validate_test_dfs_to_csvs(
-                    csvs_dir=os.path.join(CSV_DIR_DEST["mix_audio"], f'{classification_type}/{proportional}/{seed}/csv_files_split'),
-                    train_df=train_df,
-                    validate_df=validate_df,
-                    test_df=test_df
+            else:    # Fake audio's train, validate and test csvs have to be reconstructed
+                print("Not found. Reconstructing...")
+                '''
+                # Need to be tested!!!!
+                non_proportional_fake_audio_train_df, non_proportional_fake_audio_validate_df, non_proportional_fake_audio_test_df = create_train_validate_test_csvs(
+                    audio_dir=CSV_DIR_SRC["fake_audio"],
+                    dest_dir=f'{CSV_DIR_DEST["fake_audio"]}/{classification_type}',
+                    classification_type=classification_type,
+                    seed=seed,
+                    same_label=True,
+                    starting_label=1
                 )
+                '''
 
-    train_ds = CustomDataset(dataset_df=train_df, sample_rate=22050, target_sample_rate=TARGET_SAMPLE_RATE[model], model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
-    validate_ds = CustomDataset(dataset_df=validate_df, sample_rate=22050, target_sample_rate=TARGET_SAMPLE_RATE[model], model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
-    test_ds = CustomDataset(dataset_df=test_df, sample_rate=22050, target_sample_rate=TARGET_SAMPLE_RATE[model], model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor)
-    '''
-    from torch import no_grad
-    with no_grad():
-        for i in test_ds:
-            print(len(i))
-    '''
+            # Muliplicate real audio by the number of audio vocoders and concat real and fake audio subsets
+            train_temp = []
+            validate_temp = []
+            test_temp = []
+            print(len(CLASSES[classification_type][corpus]))
+            for _ in range(len(CLASSES[classification_type][corpus])):
+                print(len(real_audio_test_df))
+                train_temp.append(real_audio_train_df)
+                validate_temp.append(real_audio_validate_df)
+                test_temp.append(real_audio_test_df)
+
+            real_audio_train_df = pd.concat(train_temp)
+            real_audio_validate_df = pd.concat(validate_temp)
+            real_audio_test_df = pd.concat(test_temp)
+
+            print(f'real audio dataset multiplicated for {classification_type}')
+            fake_audio_train_df["label"] = 1
+            fake_audio_validate_df["label"] = 1
+            fake_audio_test_df["label"] = 1
+            train_df = pd.concat([real_audio_train_df, fake_audio_train_df])
+            validate_df = pd.concat([real_audio_validate_df, fake_audio_validate_df])
+            test_df = pd.concat([real_audio_test_df, fake_audio_test_df])
+
+            # Save dataframes to csvs
+            train_df, validate_df, test_df = save_train_validate_test_dfs_to_csvs(
+                csvs_dir=os.path.join(CSV_DIR_DEST["mix_audio"], f'{classification_type}/{seed}/csv_files_split'),
+                train_df=train_df,
+                validate_df=validate_df,
+                test_df=test_df
+            )
+    if model == "fingerprint":
+        target_sr = sample_rate
+    else:
+        target_sr = TARGET_SAMPLE_RATE[model]
+    train_ds = CustomDataset(dataset_df=train_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
+    validate_ds = CustomDataset(dataset_df=validate_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
+    test_ds = CustomDataset(dataset_df=test_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor)
+
     # Get corresponding mean and std
     mean, std = get_mean_std(
         ds=train_ds,
         model=model,
         classification_type=classification_type,
-        proportional=proportional,
-        seed=seed)
-    # print("mean: ", mean)
-    # print("std: ", std)
-    # print(safasfasf)
+        seed=seed,
+        mean_std_path=mean_std_dir,
+        filter_fn=filter_fn,
+        trans_fn=AVG_SPEC)
+
     # Set retrieved mean and std, only for non-fingerprints, as residuals normalization is done inside training loop, after computing the residuals:
-    if model != "fingerprints":
+    if model != "fingerprint":
         train_ds.mean = mean
         validate_ds.mean = mean
         test_ds.mean = mean
@@ -833,31 +758,4 @@ def get_datasets(model, classification_type, seed, proportional, corruption_type
     print(f'Test dataset of size {len(test_df)}')
     print(f'Total size: {len(train_df) + len(validate_df) + len(test_df)}')
 
-    '''
-    if classification_type == "binary-10":
-        test_2_ds = CustomDataset(dataset_df=test_2_df, sample_rate=22050, target_sample_rate=TARGET_SAMPLE_RATE[model], model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor)
-        if model != "fingerprints":
-            test_2_ds.mean = mean
-            test_2_ds.std = std
-        if model == "vfd-resnet":
-            test_2_ds.postprocess = patch_wise_contrastive_learning
-        print(f'Test 2 dataset of size {len(test_2_df)}')
-        return train_ds, validate_ds, test_ds, test_2_ds
-    '''
-    
-    '''
-    # Set up dataloaders
-    sampler = None
-    shuffle = True
-    if model == "vfd-resnet":
-        train_labels = train_df['label'].tolist()
-        sampler = StratifiedSampler(train_labels, batch_size=BATCH_SIZE[model])
-        shuffle = False
-
-
-    generator = Generator().manual_seed(seed)
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE[model], num_workers=16, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=COLLATE_FN[model], shuffle=shuffle, sampler=sampler)
-    validation_loader = DataLoader(validate_ds, batch_size=BATCH_SIZE[model], num_workers=16, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=COLLATE_FN[model])
-    test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE[model], num_workers=4, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=COLLATE_FN[model])
-    '''
     return train_ds, validate_ds, test_ds, None

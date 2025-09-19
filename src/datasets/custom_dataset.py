@@ -210,26 +210,17 @@ class WaveformToAvgSpec:
         # return energy.unsqueeze(0)
         return torch.nanmean(spec, dim=3)
 
-x = []
-file_in = open(f"/USERSPACE/pizarm5k/github_fingerprint/fingerprint/spectral_filter_coefs/low_pass_filter/1khz.txt", 'r')
-for y in file_in.read().split('\n'):
-    x.append(float(y))
-coef = torch.tensor(x)
-FILTER = filter_fn(1, coef, dev=DEV)
 
-AVG_SPEC = WaveformToAvgSpec(n_fft=128, hop_length=2, device=DEV).forward
-
-
-def waveform_to_residual(signals, original_lens=None):
+def waveform_to_residual(signals, filter_fn, trans_fn, original_lens=None):
     
     if original_lens is None:
         original_lens = [signals.shape[-1]]
 
     # Apply filter and transformation, and calculate residual
     # print(f'Siganls shape: {signals.shape}')
-    transformed_features = AVG_SPEC(signals, original_lens)
-    filtered_signals = FILTER.forward(signals)
-    transformed_filtered_features = AVG_SPEC(filtered_signals, original_lens)
+    transformed_features = trans_fn(signals, original_lens)
+    filtered_signals = filter_fn.forward(signals)
+    transformed_filtered_features = trans_fn(filtered_signals, original_lens)
     
     residuals = transformed_features - transformed_filtered_features
 

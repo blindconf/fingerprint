@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader
 from torch import Generator
 from src.datasets.utility import collate_fn, get_datasets, StratifiedSampler
 from src.training.utility import get_model, get_optimizer_scheduler_loss_function, get_metric, save_confusion_matrix_to_excel, save_heatmap, set_seed
-from src.training.invariables import DEV, DEVICE_IDS, URL_DIR_TO_SAVE_MODELS_AND_LOGS, BATCH_SIZE
+from src.training.invariables import DEV, DEVICE_IDS, BATCH_SIZE
 from src.training.arguments import MODELS, CLASSIFICATION_TYPES, PERFORMANCE_METRICS
 import re
 import torch.multiprocessing as mp
@@ -39,23 +39,37 @@ from src.training.loss_functions import init_loss_functions
 @click.option('--performance_metric', type=click.Choice(PERFORMANCE_METRICS), default="f1_score", help='Performance metric.')
 #@click.option('--save_id', type=int, required=True, help='ID for saving the model.')
 @click.option('--seed', type=int, default=40, help='Random seed.')
-@click.option('--proportional/--non-proportional', default=False, show_default=True, help='Only for binary classification.')
 @click.option('--corruption_type', type=int, default=0, help='Evaluate under lossy conditions: 0 = no corruption, 1 = reverberation, 2 = MP3 compression.')
 @click.option('--scale_factor', type=float, default=1.0, help='It compresses or dilates the given impulse response.') 
 @click.option('--use_nn', type=int, default=1, help='Set to 1 to use a DNN for the binary classifier under the fingerprint model, 0 to disable.')
+@click.option('--corpus', type=click.Choice(["ljspeech", "jsut", "asvspoof", "codecfake"]), required=True, default="ljspeech", help="Dataset corpus to use.")
+@click.option('--filter_param', type=str, required=True, help="Parameter of the filter.")
+@click.option('--filter_type', type=click.Choice(["low_pass_filter", "band_pass_filter"]), required=True, default="low_pass_filter", help="Type of filter to apply to the audio signal.")
+@click.option('--scorefunction', type=click.Choice(["mahalanobis", "correlation"]), required=True, default="mahalanobis", help="Type of scoring function to use.")
+@click.option('--nfft', type=int, default=128, help='Number of FFT points for creating the Spectrograms.')
+@click.option('--hop_len', type=int, default=2, help='Hop length for creating the Spectrograms.')
+@click.option('--epochs', type=int, default=10, help='Number of epochs.')
 
 # By default proportional is False
 
-def main(model, classification_type, performance_metric, seed, proportional, corruption_type, scale_factor, use_nn):   # save_id
+def main(model, classification_type, performance_metric, seed, corruption_type, scale_factor, use_nn, corpus, filter_param, filter_type, scorefunction, nfft, hop_len, epochs):   # save_id
 
     set_seed(seed)
     init_loss_functions(seed)
 
+    # Set up directory where to save model and logs
+    BASE_DIR = os.getcwd()
+    URL_DIR_TO_SAVE_MODELS_AND_LOGS = os.path.join(BASE_DIR, "trained_models") 
+    url_dir_to_save_model = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}/{model}/{corpus}/{seed}/{filter_type}/{classification_type}_filparm_{filter_param}_nfft_{nfft}_hop_{hop_len}'
+    MEAN_STD_FOLDER_DIR = os.path.join(BASE_DIR, "mean_std_stats", corpus, filter_type, f"{classification_type}_filparm_{filter_param}_nfft_{nfft}_hop_{hop_len}") 
+
     # run vocoder_fingerprint_attribution.py if model == fingerprints and classification_type is multiclass
-    if model == "fingerprints":
+    if model == "fingerprint":
 
         print(f'Initializing fingerprints scoring...')
         # construct command to run vocoder_fingerprint_attribution.py
+        FINGERPRINT_DIR = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}/{model}/{corpus}/{seed}/{filter_type}'
+        
         command = [
             sys.executable,
             "src/training/vocoder_fingerprint_attribution.py",
@@ -64,24 +78,24 @@ def main(model, classification_type, performance_metric, seed, proportional, cor
             "--performance_metric", performance_metric,
             "--corruption_type", str(corruption_type), 
             "--scale_factor", str(scale_factor),
-            "--use_nn", str(use_nn)
+            "--use_nn", str(use_nn),
+            "--corpus", corpus,
+            "--filter_param", filter_param,
+            "--save_path", url_dir_to_save_model,
+            "--fing_path", FINGERPRINT_DIR,
+            "--mean_std_dir", MEAN_STD_FOLDER_DIR,
+            "--scorefunction", scorefunction,
+            "--nfft", str(nfft),
+            "--hop_len", str(hop_len),
+            "--filter_type", filter_type,
+            "--epochs", str(epochs)
         ]
-
-        if proportional:
-            command.append("--proportional")
 
         # Run the other script
         subprocess.run(command)
 
         # Exit the current script after the other script finishes
         sys.exit(0)
-
-    # Set up directory where to save model and logs
-    if "binary" in classification_type:
-        prop = "proportional" if proportional else "non-proportional"
-        url_dir_to_save_model = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}{model}/{classification_type}/{prop}/{seed}'
-    else: 
-        url_dir_to_save_model = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}{model}/{classification_type}/{seed}'
 
     if not os.path.exists(url_dir_to_save_model):
         os.makedirs(url_dir_to_save_model)
@@ -91,10 +105,12 @@ def main(model, classification_type, performance_metric, seed, proportional, cor
     train_ds, validate_ds, test_ds, test_2_ds = get_datasets(
         model=model,
         classification_type=classification_type, 
-        proportional="proportional" if proportional else "non-proportional", 
         seed=seed,
         corruption_type=corruption_type, 
-        scale_factor=scale_factor
+        scale_factor=scale_factor, 
+        real_path=real_path,
+        fake_path=fake_path,
+        corpus=corpus
         )
 
     sampler = None
