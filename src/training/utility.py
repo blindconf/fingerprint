@@ -10,14 +10,15 @@ import seaborn as sns
 import random
 from src.models.mlp import MLPClassifier
 import numpy as np
-from src.data.x_vector_pytorch.models.x_vector import X_vector
+# from src.data.x_vector_pytorch.models.x_vector import X_vector
+from src.models.x_vector import X_vector
 from src.models.vfd_resnet_model import resnet18
 from src.models.custom_resnet_model import custom_resnet18
 from src.models.se_resnet_model import custom_se_resnet18
 from src.models.lcnn_model import LCNNModel
 from src.training.loss_functions import vfd_loss_function, non_vfd_loss_function, vfd_loss_function_binary, non_vfd_loss_function_binary
 from src.training.arguments import MODELS
-from src.training.invariables import DATASETS, DEV, BINARY_CLASS_LABELS
+from src.training.invariables import DATASETS, DEV, BINARY_CLASS_LABELS, CLASSES
 import re
 
 
@@ -39,7 +40,7 @@ def set_seed(seed):
     except Exception as e:
         print("torch.use_deterministic_algorithms is not available. Consider upgrading PyTorch for full determinism.")
 
-def get_model(model, classification_type, input_size):
+def get_model(model, classification_type, num_classes,input_size=None):
     # Set correct model based on passed arguments
     print(f'Set up the {model} model...')
 
@@ -48,7 +49,7 @@ def get_model(model, classification_type, input_size):
     if "binary" in classification_type:
         num_classes = 1
     else:
-        num_classes = int(re.findall(pattern=r'\d+', string=classification_type)[0])
+        num_classes = num_classes # int(re.findall(pattern=r'\d+', string=classification_type)[0])
 
     # Get model
     if (model == "resnet"):
@@ -62,7 +63,7 @@ def get_model(model, classification_type, input_size):
     elif (model == "vfd-resnet"):
         model = resnet18(num_classes=num_classes)
     elif (model == "fingerprint"):
-        model = MLPClassifier(input_size=input_size)
+        model = MLPClassifier(input_size=input_size, num_classes=num_classes)
 
     return model
 
@@ -76,13 +77,13 @@ def get_optimizer_scheduler_loss_function(model, my_model, classification_type):
         loss_function =  vfd_loss_function
         if "binary" in classification_type:
             loss_function =  vfd_loss_function_binary
+        '''
+            elif model == "fingerprint":
 
-    elif model == "fingerprint":
-
-        optimizer = Adam(my_model.parameters(), lr=0.001)
-        scheduler = LinearLR(optimizer=optimizer, total_iters=100)
-        loss_function = torch.nn.BCEWithLogitsLoss().to(DEV)
-
+                optimizer = Adam(my_model.parameters(), lr=0.001)
+                scheduler = LinearLR(optimizer=optimizer, total_iters=100)
+                loss_function = torch.nn.BCEWithLogitsLoss().to(DEV)
+        '''
     elif model in MODELS:
         optimizer = Adam(my_model.parameters(), lr=0.001, betas=(0.9, 0.98))
         scheduler = LinearLR(optimizer=optimizer, total_iters=100)
@@ -108,13 +109,13 @@ def get_metric(performance_metric):
     return metric
 
 
-def save_confusion_matrix_to_excel(conf_matrix, destination_url, classification_type, corruption_type, scale_factor, NN_flg=1):
+def save_confusion_matrix_to_excel(conf_matrix, destination_url, classification_type, corruption_type, scale_factor, corpus, NN_flg=1):
 
     conf_matrix = conf_matrix.cpu().numpy()
     if "binary" in classification_type:
         labels = BINARY_CLASS_LABELS
     else:
-        labels = CLASSES[classification_type]
+        labels = CLASSES[classification_type][corpus]
 
     conf_matrix_df = pd.DataFrame(conf_matrix, columns=[f"Pred_{i}" for i in labels],
                     index=[f"True_{i}" for i in labels])
@@ -125,12 +126,12 @@ def save_confusion_matrix_to_excel(conf_matrix, destination_url, classification_
     print("Confusion matrix saved...")    
 
 
-def save_heatmap(conf_matrix, destination_url, classification_type, corruption_type, scale_factor, NN_flg=1):
+def save_heatmap(conf_matrix, destination_url, classification_type, corruption_type, scale_factor, corpus):
 
     if "binary" in classification_type:
         labels = BINARY_CLASS_LABELS
     else:
-        labels = CLASSES[classification_type]
+        labels = CLASSES[classification_type][corpus]
 
     plt.figure(figsize=(8, 6))
 
@@ -139,8 +140,8 @@ def save_heatmap(conf_matrix, destination_url, classification_type, corruption_t
     plt.xlabel("Predicted Labels")
     plt.ylabel("True Labels")
     plt.title("Confusion Matrix")
-    if NN_flg:
-        plt.savefig(f'{destination_url}/testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}.png', bbox_inches="tight")
+    if corruption_type == 1:
+        plt.savefig(f'{destination_url}/evasion_testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}.png', bbox_inches="tight")
     else:
-        plt.savefig(f'{destination_url}/testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}_NN{NN_flg}.png', bbox_inches="tight")    
+        plt.savefig(f'{destination_url}/testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}.png', bbox_inches="tight")
     print("Heatmaps of Confusion matrices saved...")

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MLPClassifier(nn.Module):
-    def __init__(self, input_size=65, dropout_rate=0.5):
+    def __init__(self, input_size=65, num_classes=1, dropout_rate=0.5):
         super(MLPClassifier, self).__init__()
 
         self.fc1 = nn.Linear(input_size, 128)
@@ -18,7 +18,7 @@ class MLPClassifier(nn.Module):
         self.bn3 = nn.BatchNorm1d(32)
         self.dropout3 = nn.Dropout(dropout_rate)
 
-        self.fc_out = nn.Linear(32, 1)
+        self.fc_out = nn.Linear(32, num_classes)
 
         self._initialize_weights()
 
@@ -51,5 +51,5 @@ class MLPClassifier(nn.Module):
         x = self.dropout3(x)
 
         x = self.fc_out(x)
-        return x
+        return x, None
     

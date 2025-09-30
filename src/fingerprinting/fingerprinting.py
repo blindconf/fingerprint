@@ -5,6 +5,9 @@ from pathlib import Path
 from tqdm import tqdm
 from src.datasets.utility_2 import pad_and_concatenate
 from speechbrain.processing.speech_augmentation import AddReverb
+import os
+import glob
+import pickle
 
 
 class WaveformToAvgSpec:
@@ -30,7 +33,7 @@ class WaveformToAvgSpec:
         spec = self.transf(batch)
         # print(spec)
         if self.to_db:
-            spec = 10. * torch.log(spec + 10e-13)
+            spec = 10. * torch.log10(spec + 1e-10)
         # energy = torch.mean(spec, dim=3)  
         # return energy.unsqueeze(0)
         return torch.nanmean(spec, dim=3)
@@ -300,3 +303,160 @@ def extract_name(filepath):
     filename = filepath.split('/')[-1]
     # Split by _ or . and take the first part
     return filename.split('_')[0].split('.')[0]
+
+def load_fingerprints(fing_path, filter_param, scorefunction, nfft, hop_len, classes, DEV):
+    fingerprints = {}
+
+    for vocoder_dir in sorted(os.listdir(fing_path)):
+        if not vocoder_dir in classes:
+            continue
+        vocoder_path = os.path.join(fing_path, vocoder_dir)
+        
+        if not os.path.isdir(vocoder_path):
+            continue
+        # Find the unique fingerprint file        
+
+        # All fingerprint files in that folder
+        all_fingerprints = glob.glob(os.path.join(vocoder_path, "*_fingerprint.pickle"))
+
+        # Filter the one that matches your known partial prefix
+        partial_prefix = f"param={filter_param}_score={scorefunction}_nfft={nfft}_hoplen={hop_len}"
+        matches = [f for f in all_fingerprints if os.path.basename(f).startswith(partial_prefix)]
+
+        if len(matches) == 0:
+            raise FileNotFoundError(f"No fingerprint file found in {vocoder_path}")
+        elif len(matches) > 1:
+            raise RuntimeError(f"More than one fingerprint file found in {vocoder_path}: {matches}")
+        else:
+            fingerprint_files = matches[0]
+
+        all_invcov = glob.glob(os.path.join(vocoder_path, "*_invcov.pickle"))
+        # Filter the one that matches your known partial prefix
+        matches = [f for f in all_invcov if os.path.basename(f).startswith(partial_prefix)]
+
+        if len(matches) == 0:
+            raise FileNotFoundError(f"No covariance file found in {vocoder_path}")
+        elif len(matches) > 1:
+            raise RuntimeError(f"More than one covariance file found in {vocoder_path}: {matches}")
+        else:
+            invcov_files = matches[0]
+
+        if len(fingerprint_files.strip().split("\n")) != len(invcov_files.strip().split("\n")):
+            raise ValueError(f"Mismatch in number of fingerprint and invcov files in {vocoder_dir}")
+
+        # Extract parameters from filenames
+        params = {}
+        transformation_type = "Avg_Spec"
+        
+        fp_file= os.path.basename(fingerprint_files)
+        filename_parts = fp_file.replace(".pickle", "").split("_")
+        for item in filename_parts:
+            key_value = item.split("=")
+            if len(key_value) == 2:
+                params[key_value[0]] = key_value[1]
+
+        params["transformation_type"] = transformation_type
+
+        # Load fingerprint and invcov
+        with open(fingerprint_files, "rb") as f:
+            fingerprint = pickle.load(f)
+        with open(invcov_files, "rb") as f:
+            invcov = pickle.load(f)
+
+        # Initialize vocoder dictionary if not already present
+        if vocoder_dir not in fingerprints:
+            fingerprints[vocoder_dir] = []
+
+        # Append the fingerprint and related data
+        fingerprints[vocoder_dir].append({
+            "fingerprint": fingerprint.to(DEV),
+            "invcov": invcov.to(DEV),
+            "params": params
+        })
+    # print("fingerprints: ", fingerprints)
+    return fingerprints
+
+
+def mahalanobis_score(fingerprint, batch_residual, invcov, DEV):
+    
+    batch_size = batch_residual.shape[0]
+    scores = torch.empty(batch_size, device=DEV)
+    
+    for i in range(batch_size):
+        input_residual = batch_residual[i, :, :]
+        delta = input_residual.flatten() - fingerprint.flatten()
+        scores[i] = -torch.sqrt(torch.dot(delta, torch.matmul(invcov, delta)))
+
+
+    return scores
+
+def evasion_attack_scores(residuals, fingerprints, orig_labels, target_labels, label_map_inv, DEV):
+    batch_size = residuals.shape[0]
+    D = residuals.shape[-1]
+    num_fingerprints = len(fingerprints)
+
+    scores = torch.zeros((batch_size, num_fingerprints), device=DEV)
+    fingerprints_list = sorted(fingerprints.keys())  # system names
+
+    # Pre-build mapping from system name → (fp, invcov)
+    sys_to_fp = {}
+    for sys_name, entries in fingerprints.items():
+        fp = entries[0]["fingerprint"].to(DEV)
+        invcov = entries[0]["invcov"].to(DEV)
+        sys_to_fp[sys_name] = (fp, invcov)
+
+    # Build per-sample source/target
+    source_fps, target_fps = [], []
+    # print(orig_labels.tolist())
+    # print(target_labels.tolist())
+    for ol, tl in zip(orig_labels.tolist(), target_labels.tolist()):
+        src_sys = label_map_inv[ol]
+        tgt_sys = label_map_inv[tl]
+        source_fps.append(sys_to_fp[src_sys][0])
+        target_fps.append(sys_to_fp[tgt_sys][0])
+
+    source_fps = torch.stack(source_fps, dim=0).to(DEV)
+    target_fps = torch.stack(target_fps, dim=0).to(DEV)
+    # print(residuals.shape, source_fps.shape, target_fps.shape)
+    residuals_2 = residuals - source_fps + target_fps
+
+        # Compute scores
+    for fingerprint_index, sys_name in enumerate(fingerprints_list):
+        fp, invcov = sys_to_fp[sys_name]
+        fingerprint_score = mahalanobis_score(fp, residuals_2, invcov)
+        scores[:, fingerprint_index] = fingerprint_score
+
+    # print(scores.shape)
+    
+    return scores
+
+def compute_mahalanobis_scores(residuals, fingerprints, DEV):
+
+    num_fingerprints = len(fingerprints)
+    batch_size = residuals.shape[0]
+
+    scores = torch.zeros((batch_size, num_fingerprints), device=DEV)
+
+    fingerprints_list = sorted(fingerprints.keys())
+
+
+    for fingerprint_index, fingerprint_name in enumerate(fingerprints_list):
+
+        for data in fingerprints[fingerprint_name]:
+            fingerprint = data["fingerprint"]
+            invcov = data["invcov"]
+            fingerprint_score = mahalanobis_score(fingerprint, residuals, invcov, DEV)
+            
+            scores[:, fingerprint_index] = fingerprint_score
+    
+    return scores
+
+
+def assign_vocoders(scores):
+    
+    # Get the best vocoder index for each sample based on highest Mahalanobis score
+    best_vocoder_indices = torch.argmax(scores, dim=1)
+    
+    # Convert predictions and labels to tensors
+    preds_tensor = best_vocoder_indices.float()
+    return preds_tensor

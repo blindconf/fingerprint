@@ -88,12 +88,12 @@ TARGET_SAMPLE_RATE = {
 }
 
 BATCH_SIZE = {
-    "resnet": 256,
-    "se-resnet": 256,
-    "x-vector": 256,
-    "lcnn": 256,
+    "resnet": 128, # 256,
+    "se-resnet": 128, # 256,
+    "x-vector": 128, #256,
+    "lcnn": 128, # 128,  #256,
     "vfd-resnet":32, 
-    "fingerprint": 64
+    "fingerprint": 54 # 64
 }
 
 # Others

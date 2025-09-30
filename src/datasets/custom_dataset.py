@@ -3,7 +3,6 @@ import torch
 from torchaudio import load
 from torchaudio.transforms import Resample
 from torch.utils.data import Dataset
-from torchaudio.transforms import LFCC, MelSpectrogram
 from src.datasets.filters import filter_fn
 from torchaudio.transforms import LFCC, MelSpectrogram, MFCC, Spectrogram
 from src.training.invariables import DEV
@@ -23,13 +22,15 @@ class CustomDataset(Dataset):
         self.classification_type = classification_type
         self.mean = mean
         self.std = std
-        self.resampler = Resample(self.sample_rate, self.target_sample_rate)
+        # Resampler (will be identity if sr == target_sr)
+        self.resampler = Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
         self.postprocess = postprocess
         self.seed = seed
         
         self.corruption_type = corruption_type
         reverb_path = "/USERSPACE/DATASETS/LibriSpeech/reverb.csv"
         self.reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=scale_factor)
+        '''
         if self.corruption_type == 2:
             # 320 kbps → "near-CD quality", very little audible difference from WAV for most people.
             # 192 kbps → good balance, most streaming platforms (like Spotify free tier) use this.
@@ -43,33 +44,29 @@ class CustomDataset(Dataset):
                 self.bitrate="64k"
             else:
                 self.bitrate=scale_factor
-
-        self.lfcc = LFCC(
-            n_filter=20,
-            n_lfcc=60,
-            speckwargs={
-                "n_fft": 512,
-                "win_length": int(0.025 * self.target_sample_rate),
-                "hop_length": int(0.01 * self.target_sample_rate)
-            }
-        )
-
-
-        self.mel = MelSpectrogram(
-            sample_rate=self.target_sample_rate,
-            n_fft=2048,
-            hop_length=300,
-            win_length=1200,
-            n_mels=80,
-            f_min=0,
-            f_max=12000,
-            window_fn=torch.hamming_window
-        )
-
+        '''
         if model in ["resnet", "se-resnet", "lcnn", "x-vector"]:
-            self.transform = self.lfcc
+            self.transform = LFCC(
+                                n_filter=20,
+                                n_lfcc=60,
+                                speckwargs={
+                                    "n_fft": 512,
+                                    "win_length": int(0.025 * self.target_sample_rate),
+                                    "hop_length": int(0.01 * self.target_sample_rate)
+                                }
+                            )
         elif model == "vfd-resnet":
-            self.transform = self.log_mel_transform
+            mel = MelSpectrogram(
+                sample_rate=target_sample_rate,
+                n_fft=2048,
+                hop_length=300,
+                win_length=1200,
+                n_mels=80,
+                f_min=0,
+                f_max=12000,
+                window_fn=torch.hamming_window
+            )
+            self.transform = lambda x: torch.log(mel(x) + 1e-6)
         else:
             self.transform = None
 
@@ -77,61 +74,33 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
 
         row = self.df.iloc[index]
-        sample_uri = row["path"]
-        # print(sample_uri)
-        label = row["label"]
-        try:
-            waveform, samplerate = load(sample_uri, normalize=False)
-            if waveform.dtype == torch.int16:  # WAV PCM16
-                waveform = waveform.float() / 32768.0
-            elif waveform.dtype == torch.float32:  # MP3 (already float [-1,1])
-                pass  # do nothing
-            else:
-                raise ValueError(f"Unexpected dtype {waveform.dtype}")
-            
-            # waveform, samplerate = load(sample_uri, normalize=True)
-            # print(waveform.shape, "entro")
-            # waveform = waveform.float() / 32768.0  # manual normalization from PCM16
-        except Exception as e:
-            print(f"Error reading file: {sample_uri}")
-            raise e
-        waveform = waveform.float()
-        
-        if self.corruption_type == 1:
-            waveform = self.reverb(waveform, torch.tensor([1.0]))
-            '''
-            import os
-            torchaudio.save(os.path.basename(sample_uri), audio.cpu(), samplerate)  # , encoding="PCM_S", bits_per_sample=16)
-            print(waveform.shape, audio.shape, sample_uri, os.path.basename(sample_uri), self.target_sample_rate, samplerate)
-            print(afsasf)
-            '''
+        sample_uri, label = row["path"], row["label"]
 
-        waveform = self.resample(waveform, samplerate)
+        waveform, sr = load(sample_uri)
+        waveform = waveform.float()
+        # print(self.sample_rate, self.target_sample_rate)
+        waveform = self.resampler(waveform)
 
         if self.transform is not None:
-            waveform = self.transform(waveform)
-            waveform = waveform.squeeze(0)  # Remove batch dimension
+            features  = self.transform(waveform).squeeze(0)
+        else:
+            features = waveform
 
+        '''
+        # Normalize if stats provided
         if self.mean is not None and self.std is not None:
-            waveform = (waveform - self.mean[:, None]) / self.std[:, None]
-        
+            features = (features - self.mean[:, None]) / (self.std[:, None] + 1e-8)
+        '''
         if self.postprocess is not None:
-            waveform = self.postprocess(waveform)
+            # '''
+            if features.shape[1] < 64:
+                repeat_factor = (64 // features.shape[1]) + 1
+                features = features.repeat(1, repeat_factor)
+                features = features[:, :64]
+            # '''
+            features = self.postprocess(features)
                 
-        label = torch.tensor(label, dtype=torch.long)
-        return waveform, label
-
-
-    def log_mel_transform(self, waveform):
-
-        return torch.log(self.mel(waveform) + 1e-6)
-
-    
-    def resample(self, signal, sr):
-        if sr != self.target_sample_rate:            
-            signal = self.resampler(signal)
-        return signal
-
+        return features, torch.tensor(label, dtype=torch.long)
 
     def __len__(self):
         return len(self.df)
@@ -182,46 +151,3 @@ class WaveformToAvgMel:
         energy = torch.mean(mfcc.squeeze(0), dim=1)  
         return energy.unsqueeze(0)
 
-
-class WaveformToAvgSpec:
-    def __init__(self, 
-                 n_fft,
-                 hop_length,
-                 device,
-                 to_db=True):
-        self.n_fft = n_fft
-        self.hop_length = hop_length
-        
-        self.transf = Spectrogram(n_fft=self.n_fft,
-                                                        hop_length=self.hop_length).to(device)
-        self.device = device  
-        self.to_db = to_db   
-        
-    def forward(self, batch: torch.Tensor, original_audio_lengths: list) -> torch.Tensor: 
-        # batch = batch.squeeze(0).to(self.device)
-        max_audio_len = batch.shape[2]
-        num_samps = batch.shape[0]
-        mask = torch.arange(max_audio_len).expand(num_samps, max_audio_len) >= torch.tensor(original_audio_lengths).unsqueeze(1)
-        batch[mask.unsqueeze(1)] = float('nan')
-        spec = self.transf(batch)
-        if self.to_db:
-            spec = 10. * torch.log(spec + 10e-13)
-        # energy = torch.mean(spec, dim=3)  
-        # return energy.unsqueeze(0)
-        return torch.nanmean(spec, dim=3)
-
-
-def waveform_to_residual(signals, filter_fn, trans_fn, original_lens=None):
-    
-    if original_lens is None:
-        original_lens = [signals.shape[-1]]
-
-    # Apply filter and transformation, and calculate residual
-    # print(f'Siganls shape: {signals.shape}')
-    transformed_features = trans_fn(signals, original_lens)
-    filtered_signals = filter_fn.forward(signals)
-    transformed_filtered_features = trans_fn(filtered_signals, original_lens)
-    
-    residuals = transformed_features - transformed_filtered_features
-
-    return residuals

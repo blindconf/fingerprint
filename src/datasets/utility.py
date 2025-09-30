@@ -8,7 +8,6 @@ from src.datasets.custom_dataset import CustomDataset
 from src.training.invariables import CLASSES, TARGET_SAMPLE_RATE, DEV
 from torch import stack
 import os
-from src.datasets.custom_dataset import waveform_to_residual
 import pandas as pd
 from torch.utils.data import Sampler
 import torch
@@ -109,13 +108,13 @@ def fingerprints_collate_fn(batch):
 
     return signals, labels, original_lengths
 
-
+'''
 def compute_mean_std_and_save(ds, model, out_dir, filter_fn, trans_fn):
 
     print("Computing mean and std over the train dataset...")
-
+    num_workers_opt = 4  # Moderate number to avoid maxing out CPU
     generator = torch.Generator().manual_seed(40)
-    dl = DataLoader(ds, batch_size=64, num_workers=24, persistent_workers=True, pin_memory=True, generator=generator, shuffle=True, collate_fn=fingerprints_collate_fn)
+    dl = DataLoader(ds, batch_size=64, num_workers=num_workers_opt, persistent_workers=True, pin_memory=False, generator=generator, shuffle=True, collate_fn=fingerprints_collate_fn)
 
     sum_features = None
     sum_squared_features = None
@@ -123,10 +122,10 @@ def compute_mean_std_and_save(ds, model, out_dir, filter_fn, trans_fn):
 
     for batch_signals, labels, original_lens in tqdm(dl, desc="Processing batches", unit="batch"):
         batch_signals = batch_signals.to(DEV)  # (B, C, T)
-
         if model == "fingerprint":
             batch_signals = waveform_to_residual(batch_signals, filter_fn, trans_fn, original_lens)
-        # print(batch_signals.shape)
+        else:
+            batch_signals = batch_signals.sum(dim=-1)  # sum over last dimension             
         # Sum over batch and time dimensions
         if sum_features is None:
             sum_features = batch_signals.sum(dim=0) 
@@ -134,7 +133,7 @@ def compute_mean_std_and_save(ds, model, out_dir, filter_fn, trans_fn):
         else:
             sum_features += batch_signals.sum(dim=0) 
             sum_squared_features += (batch_signals ** 2).sum(dim=0) 
-
+        
         total_frames += batch_signals.shape[0] 
 
         del batch_signals
@@ -157,12 +156,12 @@ def compute_mean_std_and_save(ds, model, out_dir, filter_fn, trans_fn):
         pickle.dump(std.cpu().numpy(), f)  # Ensure it's on CPU before saving
 
     print(f"Mean and std saved in {out_dir}.")
-
+'''
 
 def patch_wise_contrastive_learning(signals):
     patch_size = (64, 64)
     num_patches = 16
-    
+
     # Randomly sample patches
     signals = signals.unsqueeze(0)  # Add batch size dimension
     batch_size, freq_dim, time_dim = signals.size()
@@ -525,11 +524,15 @@ def rewrite_path(path: str) -> str:
 
     return path
 
-def save_train_validate_test_dfs_to_csvs(csvs_dir, train_df, validate_df, test_df):
+def save_train_validate_test_dfs_to_csvs(csvs_dir, train_df, validate_df, test_df, seed):
 
     # Ensure the directory exists before saving
     os.makedirs(csvs_dir, exist_ok=True)
     
+    train_df = train_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    validate_df = validate_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    test_df = test_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    '''
     # Sort dataset by file name
     train_df['tuple_key'] = train_df['path'].apply(lambda x: (x.split('/')[-1], x.split('/')[-2]))  # Create tuple (file name, vocoder name) to sort by two keys
     train_df.sort_values(by='tuple_key', inplace=True, ignore_index=True)
@@ -542,7 +545,7 @@ def save_train_validate_test_dfs_to_csvs(csvs_dir, train_df, validate_df, test_d
     test_df['tuple_key'] = train_df['path'].apply(lambda x: (x.split('/')[-1], x.split('/')[-2]))  # Create tuple (file name, vocoder name) to sort by two keys
     test_df.sort_values(by='tuple_key', inplace=True, ignore_index=True)
     test_df.drop(columns='tuple_key', inplace=True)
-
+    '''
     # Save train, validate and test dataframes to csvs
     train_df.to_csv(os.path.join(csvs_dir, 'train.csv'), index=False)
     validate_df.to_csv(os.path.join(csvs_dir, 'validate.csv'), index=False)
@@ -575,7 +578,7 @@ def get_mean_std(
 
     # Create corresponding mean and std if not present
     dir = os.path.join(dir, str(seed))
-    if not os.path.exists(dir): # not os.path.exists(dir):
+    if not os.path.exists(dir) : # not os.path.exists(dir):
         print(f"Mean and std for the corresponding train dataset and gived seed not found. {dir}")
         compute_mean_std_and_save(
             ds=ds,
@@ -611,14 +614,14 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
     if "multiclass" in classification_type:
 
         audio_type = "fake_audio"
-        subsets_folder_path = os.path.join(CSV_DIR_DEST[audio_type], f'{classification_type}/{seed}/csv_files_split')
+        subsets_folder_path = os.path.join(CSV_DIR_DEST[audio_type], f'{seed}/csv_files_split')
 
     else:   # "binary" in classification_type
         audio_type = "mix_audio"
         subsets_folder_path = os.path.join(CSV_DIR_DEST[audio_type], f'{classification_type}/{seed}/csv_files_split')
-    
+
     if os.path.exists(subsets_folder_path):
-        print("Dataset for the given seed was found. Loading...")
+        print("Dataset for the given seed was found. Loading...", subsets_folder_path)
         train_df, validate_df, test_df = get_train_validate_test_df(subsets_folder_path, corruption_type)
 
     else:   # New seed, dataset has to be reconstructed
@@ -692,7 +695,11 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
                 train_temp.append(real_audio_train_df)
                 validate_temp.append(real_audio_validate_df)
                 test_temp.append(real_audio_test_df)
-
+            if corpus == "codecfake":
+                test_temp.append(real_audio_test_df)
+            elif corpus == "asvspoof":
+                for _ in range(11):
+                    test_temp.append(real_audio_test_df)
             real_audio_train_df = pd.concat(train_temp)
             real_audio_validate_df = pd.concat(validate_temp)
             real_audio_test_df = pd.concat(test_temp)
@@ -710,16 +717,44 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
                 csvs_dir=os.path.join(CSV_DIR_DEST["mix_audio"], f'{classification_type}/{seed}/csv_files_split'),
                 train_df=train_df,
                 validate_df=validate_df,
-                test_df=test_df
+                test_df=test_df,
+                seed=seed
             )
+    n_classes = len(CLASSES[classification_type][corpus])
+    print("Number of training classes: ", n_classes)
+
+    # Filter by num_classes
+    if classification_type == "multiclass":
+        test_df = test_df[test_df["label"] <= n_classes]
+        for _ in range(n_classes):
+            print(len(train_df[train_df["label"] == _ + 1]), len(validate_df[validate_df["label"] == _ + 1]), len(test_df[test_df["label"] == _ + 1]), _ + 1)
+    else:
+        for _ in range(n_classes):
+            print(len(test_df[test_df["label"] == _]), _)
+
     if model == "fingerprint":
         target_sr = sample_rate
     else:
         target_sr = TARGET_SAMPLE_RATE[model]
+    if corruption_type == 1:
+        # Evasion Attack
+        test_df = (
+                        test_df.groupby("label", group_keys=False)
+                        .apply(lambda x: x.sample(n=100, random_state=seed))
+                    )
+
+    train_df = train_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    validate_df = validate_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    test_df = test_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    # print(train_df)
+    # print(validate_df)
+    # print(test_df)
+
     train_ds = CustomDataset(dataset_df=train_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
     validate_ds = CustomDataset(dataset_df=validate_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
     test_ds = CustomDataset(dataset_df=test_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor)
 
+    '''
     # Get corresponding mean and std
     mean, std = get_mean_std(
         ds=train_ds,
@@ -738,7 +773,8 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
         train_ds.std = std
         validate_ds.std = std
         test_ds.std = std
-        
+    '''
+
     '''
     # Disable computing residuals in dataset class once mean and std are computed, for better performance in training loop
     if model == "fingerprints":
@@ -748,7 +784,6 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
     '''
     # Set up contrastive learning to be done after mean and std were computed to apply contrastive learning on normalized log-mel features
     if model == "vfd-resnet":
-        train_ds.transform
         train_ds.postprocess = patch_wise_contrastive_learning
         validate_ds.postprocess = patch_wise_contrastive_learning
         test_ds.postprocess = patch_wise_contrastive_learning
