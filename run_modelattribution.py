@@ -1,8 +1,8 @@
 """
-Spoofed Speech via audio fingerprint script.
+Synthetic Speech via Audio Residual Fingerprint (ARF) script.
 
 This script implements a single-model attribution approach to recognize 
-the source (algorithm) of deepfake utterances via audio fingerprinting.
+the source (algorithm) of deepfake utterances via ARF.
 
 Paper (Arxiv submission): https://github.com/blindconf/fingerprint/
 """
@@ -10,20 +10,20 @@ Paper (Arxiv submission): https://github.com/blindconf/fingerprint/
 import argparse
 import sys
 import logging
-from src.fingerprinting.filters import OracleFilter, filter_fn, EncodecFilter
 import torch
 import os
+import pickle
+import pandas as pd 
+from statistics import mean
+from sklearn.metrics import roc_auc_score
+from torch.utils.data import DataLoader
+
+from src.fingerprinting.filters import OracleFilter, filter_fn, EncodecFilter
 from src.datasets.utility_2 import load_or_construct_datasets, get_caching_paths, plot_finger_freq, hist_plot, get_auc_path
 from encodec import EncodecModel
 from src.fingerprinting.fingerprinting import WaveformToAvgSpec, FingerprintingWrapper
-import numpy as np
-from src.training.invariables import DATASETS
-from torch.utils.data import DataLoader
 from src.fingerprinting.audio_dataLoader import AudioDataSet, collate_fn
-import pickle
-from sklearn.metrics import roc_auc_score
-import pandas as pd 
-from statistics import mean
+from src.training.invariables import DATASETS
 
 
 # Setup logger
@@ -57,31 +57,27 @@ def parse_args():
 
     # Dataset selection: ljspeech, jsut, or asvspoof
     parser.add_argument("--corpus", choices=["ljspeech", "jsut", "asvspoof", "codecfake"], default="ljspeech")
-    parser.add_argument("--real-data-path", help="Directory of real audio")
-    parser.add_argument("--fake-data-path", help="Directory of fake audio")
-    parser.add_argument("--protocol-path", type=str, help="Path to ASVspoof protocol file (required for asvspoof corpus)")
-
+    parser.add_argument("--data_path", type=str, required=True, help="""Directory containing audio data.
+                        For ljspeech/jsut, this is the folder with fake/generated audio, and --real-data-path must be provided separately.
+                        For codecfake, this folder contains all audio.
+                        For asvspoof, this folder contains the protocol information.""")
+    parser.add_argument("--real_data_path", type=str, default=None, help="Directory of real audio (only needed for ljspeech and jsut).")
     # Filter configuration
-    parser.add_argument("--filter-type", choices=FILTERS.keys(), default="low_pass_filter", help="Type of filter to apply to the audio signal.")
-    parser.add_argument("--filter-param", type=str, default="1", help="Parameter of the filter.")
+    parser.add_argument("--filter_type", choices=FILTERS.keys(), default="low_pass_filter", help="Type of filter to apply to the audio signal.")
+    parser.add_argument("--filter_param", type=str, default="1", help="Parameter of the filter.")
     parser.add_argument("--scorefunction", choices=["mahalanobis", "correlation"], default="mahalanobis", help="Type of scoring function to use.")
-
     # Data and processing paths
-    # parser.add_argument("--csv-dir", type=str, default="csv_files")
     parser.add_argument("--nfft", type=int, default=128, help="Number of FFT points for creating the Spectrograms.")
-    parser.add_argument("--hop-len", type=int, default=2, help="Hop length for creating the Spectrograms.")
+    parser.add_argument("--hop_len", type=int, default=2, help="Hop length for creating the Spectrograms.")
     parser.add_argument("--seed", type=int, default=40, help="Default seed 40.")
     parser.add_argument("--cutoff", type=int, default=None, help="Cutoff first frequency bins for fingerprinting.")
-
     # Additional processing details
-    parser.add_argument("--trend-correction", action="store_true", help="Correct the filter trend.")
+    parser.add_argument("--trend_correction", action="store_true", help="Correct the filter trend.")
     parser.add_argument("--batchsize", type=int, default=24, help="Adjust batch size as needed.")
     parser.add_argument("--batchsamples", type=int, default=240000, help="Each audio signal is padded or trimmed to the same length.")
-    parser.add_argument("--encodec-samplewise", action="store_true", help="Encodec reencoding is applied samplewise. Strangely, the output is different depending on batch-wise or sample-wise computations.")
-    parser.add_argument("--encodec-qr", choices=["1_5", "3", "6", "12", "24"], default="1_5", help="Quantization rate for the Encodec perturbation.")
-    parser.add_argument("--plot-flg", action="store_true", help="If set, generates residual plots and histogram fingerprints for diagnostic analysis.")
-    parser.add_argument("--corruption-type", choices=[0, 1, 2], type=int, default=0, help="Evaluate under lossy conditions: 0 = no corruption, 1 = reverberation, 2 = MP3 compression.")
-    parser.add_argument("--scale-factor", type=float, default=1.0, help="It compresses or dilates the given impulse response.")
+    parser.add_argument("--encodec_samplewise", action="store_true", help="Encodec reencoding is applied samplewise. Strangely, the output is different depending on batch-wise or sample-wise computations.")
+    parser.add_argument("--encodec_qr", choices=["1_5", "3", "6", "12", "24"], default="1_5", help="Quantization rate for the Encodec perturbation.")
+    parser.add_argument("--plot_flg", action="store_true", help="If set, generates residual plots and histogram fingerprints for diagnostic analysis.")
 
     args = parser.parse_args()
 
@@ -102,7 +98,6 @@ def parse_args():
 
     args.deterministic = 1 if args.filter_type == "Oracle" else None
     args.shuffle = False if args.filter_type == "Oracle" else True
-
     # Assign sample rates based on corpus
     # Different corpora use different sample rates natively, which must be respected for audio fidelity.
     if args.corpus == "jsut":
@@ -111,7 +106,6 @@ def parse_args():
         args.sample_rate = 22050
     else:
         args.sample_rate = 16000
-
     logger.info(f"Corpus: {args.corpus}, Sample Rate: {args.sample_rate}")
 
     return args
@@ -126,15 +120,10 @@ def main(args):
     # Set a global seed for reproducibility
     SEED = args.seed
     torch.manual_seed(SEED)
-    
     # Load or construct training, validation, and test datasets.
     train_df, validate_df, test_df, real_audio_train_df, real_audio_validate_df, real_audio_test_df = load_or_construct_datasets(args)
     # Prepare directories for storing outputs such as fingerprints and plots.
     data_dir_path = f"fingerprints/{args.corpus}/{args.seed}/{args.filter_type}"
-    plot_path = f"plots/{args.corpus}/{args.seed}/Avg_Spec/{args.scorefunction}/{args.filter_type}/{args.corruption_type}"
-    if args.filter_type == "EncodecFilter":
-        data_dir_path += f"-compute_samplewise={args.encodec_samplewise}"
-        plot_path += f"-compute_samplewise={args.encodec_samplewise}"
         
     logger.info("======================================")
     logger.info(f"Fingerprinting method: {args.scorefunction}!")
@@ -164,7 +153,6 @@ def main(args):
     # Create a transformation to convert waveforms into averaged spectrograms.
     # This is the core feature representation for fingerprinting.
     transformation = WaveformToAvgSpec(n_fft=args.nfft, hop_length=args.hop_len)
-
     # Assume train_df is already defined and loaded
     attack_labels = sorted(train_df["label"].unique())
     attack_test_labels = sorted(test_df["label"].unique())
@@ -173,15 +161,14 @@ def main(args):
     CORPUS_DICT_REVERSE = {v: k for k, v in DATASETS[args.corpus].items()}
     finger_folder = f"trained_models/fingerprint/{args.corpus}/{args.seed}/{args.filter_type}"
     os.makedirs(finger_folder, exist_ok=True)
-
     num_train_data_dict = {}
     # Loop over each attack label (each fake model) to train a dedicated fingerprint.
     for label in attack_labels:
         os.makedirs(f"{finger_folder}/{CORPUS_DICT_REVERSE[label]}", exist_ok=True)
-        attack_df = train_df[train_df["label"] == label] # .sample(n=25, random_state=42)
-        # Sanity check for Mahalanobis scoring function
+        attack_df = train_df[train_df["label"] == label]        
         args.num_train = len(attack_df)
         num_train_data_dict[label] = args.num_train
+        # Sanity check for Mahalanobis scoring function
         if args.scorefunction == "mahalanobis" and args.num_train * 2 < args.nfft:
             logger.error("The sample size is too small for Mahalanobis scoring.")
             sys.exit(f"The sample size is too small. Consider reducing the nfft value ({args.nfft}) or increasing the number of training samples ({args.num_train}).")
@@ -193,7 +180,7 @@ def main(args):
                                         scoring=args.scorefunction)
 
         dataset = AudioDataSet(
-            annotation_df=attack_df[["path"]],  # Only keep the 'path' column
+            annotation_df=attack_df[["path"]],
             target_sample_rate=args.sample_rate,
             train_nrows=False,
             deterministic=args.deterministic,
@@ -206,10 +193,8 @@ def main(args):
             collate_fn=collate_fn
         )
         
-        # os.makedirs(f"{plot_path}/{folder_name}", exist_ok=True)
         caching_paths = get_caching_paths(cache_dir=finger_folder, args=args, target_model=CORPUS_DICT_REVERSE[label])
-        fingerprint_path = caching_paths['fingerprint']# .strip()
-        print(fingerprint_path)
+        fingerprint_path = caching_paths['fingerprint']
         # If fingerprint is not precomputed, train it now and optionally cache it.
         if not os.path.isfile(fingerprint_path): 
             logger.info("======================================")
@@ -247,7 +232,7 @@ def main(args):
             if args.plot_flg:
                 plot_folder = f"plots/fingerprint/residuals/{args.corpus}/{args.seed}/{args.filter_type}"      
                 os.makedirs(plot_folder, exist_ok=True)
-                plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={CORPUS_DICT_REVERSE[label]}_corrtype={args.corruption_type}.pdf"
+                plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={CORPUS_DICT_REVERSE[label]}.pdf"
                 plot_finger_freq(args.sample_rate, wrapper.fingerprint, wrapper.name, plot_path)
     
     # Evaluate each trained fingerprint against all test models (cross-model comparison).
@@ -306,14 +291,12 @@ def main(args):
                 if args.filter_type == 'Oracle':
                     output = wrapper.forward(audio_test_dataloader, real_audio_dataloader, cutoff=args.cutoff)
                 else:    
-                    output = wrapper.forward(audio_test_dataloader, cutoff=args.cutoff, corruption_type=args.corruption_type, scale_factor=args.scale_factor)
+                    output = wrapper.forward(audio_test_dataloader, cutoff=args.cutoff)
                 outputs[label_test] = output.cpu().tolist()
                 
-            # '''
             if args.filter_type != 'Oracle':
                 output = wrapper.forward(real_audio_dataloader, cutoff=args.cutoff)
                 outputs[0] = output.cpu().tolist()
-            # '''
             auc_results[f"{CORPUS_DICT_REVERSE[label]}"] = []
 
             for key_dict in outputs.keys():
@@ -329,7 +312,7 @@ def main(args):
                     if args.plot_flg:
                         plot_folder = f"plots/fingerprint/histograms/{args.corpus}/{args.seed}/{args.filter_type}"
                         os.makedirs(plot_folder, exist_ok=True)
-                        plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_corrtype={args.corruption_type}_models={CORPUS_DICT_REVERSE[label]}_vs_{CORPUS_DICT_REVERSE[key_dict]}.png"
+                        plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_models={CORPUS_DICT_REVERSE[label]}_vs_{CORPUS_DICT_REVERSE[key_dict]}.png"
                         if args.scorefunction == "correlation":                    
                             x_label = "Correlation"
                         else:
@@ -340,21 +323,16 @@ def main(args):
             auc_all = mean(auc_values)
             auc_results[f"{CORPUS_DICT_REVERSE[label]}"].append({'vs_model': 'Avg.', 'AUC': auc_all})
 
-            # missing using real and then adding all and trying the oracle! 
-
             # Create Excel file with AUC results
             # Save AUC results across all comparisons to an Excel file for later review.
-            # '''
             with pd.ExcelWriter(auc_path) as writer:
                 for method, data in auc_results.items():
                     # Convert the list of dictionaries to a DataFrame
                     df = pd.DataFrame(data)
                     # Write the DataFrame to an Excel sheet
                     df.to_excel(writer, sheet_name=method, index=False)
-            # '''                    
         else:
             continue
-
     pass
 
 if __name__ == "__main__":
