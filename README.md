@@ -20,11 +20,25 @@ This paper [Lightweight Model Attribution and Detection of Synthetic Speech via 
 To compute the fingerprints run the script as follows:
 #### Low-pass-filter
 ```
-python audio-fingerprint/run_modelattribution.py --real-data-path ... --fake-data-path ... --corpus ljspeech --filter-type low_pass_filter --filter-param 1 --scorefunction mahalanobis --transformation Avg_Spec --nfft 128 --hop-len 2 --batchsize 100 --seed 1
+python run_modelattribution.py \
+  --corpus ljspeech \
+  --data_path /data/DATASETS/WaveFake/ \
+  --real_data_path /data/DATASETS/LJSpeech-1.1/wavs/ \
+  --window_size 8 \
+  --hop_size 0.125 \
+  --seed 40 \
+  --batchsize 100
 ```
 #### EncoDec
 ```
-python audio-fingerprint/run_modelattribution.py --real-data-path ... --fake-data-path ... --corpus ljspeech --filter-type EncodecFilter --filter-param 24 --scorefunction correlation --transformation Avg_Spec --nfft 2048 --hop-len 128 --batchsize 100 --seed 1
+python run_modelattribution.py \
+  --corpus ljspeech \
+  --data_path /data/DATASETS/WaveFake/ \
+  --real_data_path /data/DATASETS/LJSpeech-1.1/wavs/ \
+  --window_size 8 \
+  --hop_size 0.125 \
+  --seed 40 \
+  --batchsize 100
 ```
 
 ### Running the Closed-World setting
@@ -32,9 +46,23 @@ To compute in a closed-world setting, select one model from x-vector, vfd-resnet
 
 #### Multiclass classifier
 ```
-python DetectingVocoderFingerprints/src/training/train_model.py --model ... --classification_type multiclass-10 --seed 80
-```
+python train_model.py \
+  --corpus asvspoof \
+  --window_size 25 \
+  --hop_size 10 \
+  --seed 40 \
+  --model se-resnet \
+  --classification_type multiclass \
+  --batchsize 128
+  ```
 #### Binary classifier
 ```
-python DetectingVocoderFingerprints/src/training/train_model.py --model ... --classification_type binary-10 --seed 80
-```
+python train_model.py \
+  --corpus asvspoof \
+  --window_size 25 \
+  --hop_size 10 \
+  --seed 40 \
+  --model se-resnet \
+  --classification_type binary \
+  --batchsize 128
+  ```
