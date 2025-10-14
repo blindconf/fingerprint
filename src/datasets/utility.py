@@ -594,8 +594,9 @@ def get_mean_std(
 
     return mean, std
 
-
-def get_datasets(model, classification_type, seed, corruption_type, scale_factor, corpus, mean_std_dir, sample_rate, filter_fn, AVG_SPEC):
+# filter_fn, AVG_SPEC
+def get_datasets(model, classification_type, seed, corruption_type, scale_factor, corpus, mean_std_dir, 
+                sample_rate, coef, n_fft, hop_length):
 
     print(f'Searching for saved dataset for {classification_type} and given seed({seed})')
 
@@ -732,7 +733,7 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
         for _ in range(n_classes):
             print(len(test_df[test_df["label"] == _]), _)
 
-    if model == "fingerprint":
+    if model == "fingerprint" or model == "fingerprint_2":
         target_sr = sample_rate
     else:
         target_sr = TARGET_SAMPLE_RATE[model]
@@ -750,9 +751,9 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
     # print(validate_df)
     # print(test_df)
 
-    train_ds = CustomDataset(dataset_df=train_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
-    validate_ds = CustomDataset(dataset_df=validate_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed)
-    test_ds = CustomDataset(dataset_df=test_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor)
+    train_ds = CustomDataset(dataset_df=train_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, coef=coef, n_fft=n_fft, hop_length=hop_length)
+    validate_ds = CustomDataset(dataset_df=validate_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, coef=coef, n_fft=n_fft, hop_length=hop_length)
+    test_ds = CustomDataset(dataset_df=test_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor, coef=coef, n_fft=n_fft, hop_length=hop_length)
 
     '''
     # Get corresponding mean and std

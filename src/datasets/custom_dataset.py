@@ -8,12 +8,12 @@ from torchaudio.transforms import LFCC, MelSpectrogram, MFCC, Spectrogram
 from src.training.invariables import DEV
 import os
 import warnings
-from speechbrain.processing.speech_augmentation import AddReverb
 
 
 class CustomDataset(Dataset):
 
-    def __init__(self, dataset_df, sample_rate, target_sample_rate, model, classification_type, mean, std, seed, postprocess=None, corruption_type=0, scale_factor=1.0) -> None:
+    def __init__(self, dataset_df, sample_rate, target_sample_rate, model, classification_type, mean, std, seed, 
+                postprocess=None, corruption_type=0, scale_factor=1.0, coef=None, n_fft=None, hop_length=None) -> None:
 
         self.df = dataset_df
         self.model = model
@@ -26,26 +26,13 @@ class CustomDataset(Dataset):
         self.resampler = Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
         self.postprocess = postprocess
         self.seed = seed
-        
+        self.coef = coef
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+
         self.corruption_type = corruption_type
-        reverb_path = "/USERSPACE/DATASETS/LibriSpeech/reverb.csv"
-        self.reverb = AddReverb(reverb_prob=1, csv_file=reverb_path, rir_scale_factor=scale_factor)
-        '''
-        if self.corruption_type == 2:
-            # 320 kbps → "near-CD quality", very little audible difference from WAV for most people.
-            # 192 kbps → good balance, most streaming platforms (like Spotify free tier) use this.
-            # 128 kbps → standard web/voice quality, but some artifacts in music.
-            # 64 kbps or lower → intelligible speech, but noticeable degradation.
-            if scale_factor == 192:
-                self.bitrate="192k"
-            elif scale_factor == 128:
-                self.bitrate="128k"
-            elif scale_factor == 64:
-                self.bitrate="64k"
-            else:
-                self.bitrate=scale_factor
-        '''
-        if model in ["resnet", "se-resnet", "lcnn", "x-vector"]:
+
+        if model in ["resnet", "se-resnet", "lcnn", "x-vector"]:            
             self.transform = LFCC(
                                 n_filter=20,
                                 n_lfcc=60,
@@ -54,7 +41,16 @@ class CustomDataset(Dataset):
                                     "win_length": int(0.025 * self.target_sample_rate),
                                     "hop_length": int(0.01 * self.target_sample_rate)
                                 }
-                            )
+                            )# .to(DEV)
+
+
+        elif model in ["fingerprint", "fingerprint_2"]:
+            self.transform = Spectrogram(
+                                    n_fft = n_fft,
+                                    hop_length = hop_length
+                                    )# .to(DEV)
+            self.filter_fn = filter_fn(1, coef)
+
         elif model == "vfd-resnet":
             mel = MelSpectrogram(
                 sample_rate=target_sample_rate,
@@ -67,6 +63,7 @@ class CustomDataset(Dataset):
                 window_fn=torch.hamming_window
             )
             self.transform = lambda x: torch.log(mel(x) + 1e-6)
+
         else:
             self.transform = None
 
@@ -77,15 +74,22 @@ class CustomDataset(Dataset):
         sample_uri, label = row["path"], row["label"]
 
         waveform, sr = load(sample_uri)
-        waveform = waveform.float()
+        waveform = waveform.float()# .to(DEV)
         # print(self.sample_rate, self.target_sample_rate)
         waveform = self.resampler(waveform)
 
-        if self.transform is not None:
+        if self.model in ["fingerprint", "fingerprint_2"]:
+            filt_feat = self.filter_fn.forward(waveform)
+            waveform, filt_feat = self.match_length(waveform, filt_feat) 
+            trans_feat = self.transform(waveform).squeeze(0)
+            trans_filt_feat = self.transform(filt_feat).squeeze(0)
+            features = trans_feat - trans_filt_feat
+
+        elif self.transform is not None:
             features  = self.transform(waveform).squeeze(0)
+            # print(features.shape)
         else:
             features = waveform
-
         '''
         # Normalize if stats provided
         if self.mean is not None and self.std is not None:
@@ -105,49 +109,7 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
-
-# Transforms for fingerprints
-class WaveformToAvgMFCC: 
-    def __init__(self, sample_rate, n_mfcc, melkwargs, device):
-        self.sample_rate = sample_rate
-        self.n_mfcc = n_mfcc
-        self.melkwargs = melkwargs
-        
-        self.transf = MFCC(sample_rate=self.sample_rate, n_mfcc=self.n_mfcc, melkwargs=self.melkwargs).to(device)
-        self.device = device
-        
-    def forward(self, batch: torch.Tensor) -> torch.Tensor:
-        batch = batch.squeeze(0).to(self.device)
-        mfcc = self.transf(batch)
-        energy = torch.mean(mfcc.squeeze(0), dim=1)  
-        return energy.unsqueeze(0)
-
-
-class WaveformToAvgMel:
-    def __init__(self, 
-                 sample_rate,
-                 n_fft,
-                 hop_length,
-                 n_mels,
-                 device,
-                 to_db=True):
-        self.sample_rate = sample_rate
-        self.n_fft = n_fft
-        self.hop_length = hop_length
-        self.n_mels = n_mels
-        
-        self.transf = MelSpectrogram(sample_rate=self.sample_rate,
-                                                           n_fft=self.n_fft,
-                                                           hop_length=self.hop_length,
-                                                           n_mels=self.n_mels).to(device)
-        self.device = device  
-        self.to_db = to_db   
-        
-    def forward(self, batch: torch.Tensor) -> torch.Tensor: 
-        #batch = batch.squeeze(0).to(self.device)
-        mfcc = self.transf(batch)
-        if self.to_db:
-            mfcc = 10. * torch.log(mfcc + 10e-13)
-        energy = torch.mean(mfcc.squeeze(0), dim=1)  
-        return energy.unsqueeze(0)
-
+    def match_length(self, a: torch.Tensor, b: torch.Tensor):
+        """Trim both tensors along the last dimension to the same minimum length."""
+        min_len = min(a.shape[-1], b.shape[-1])
+        return a[..., :min_len], b[..., :min_len]

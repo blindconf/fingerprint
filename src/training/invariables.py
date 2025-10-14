@@ -87,14 +87,17 @@ TARGET_SAMPLE_RATE = {
     # "fingerprint": 22050
 }
 
+'''
 BATCH_SIZE = {
     "resnet": 128, # 256,
-    "se-resnet": 128, # 256,
+    "se-resnet": 10, # 256,
     "x-vector": 128, #256,
     "lcnn": 128, # 128,  #256,
     "vfd-resnet":32, 
-    "fingerprint": 54 # 64
+    "fingerprint": 128,  # 64
+    "fingerprint_2": 128 # 64
 }
+'''
 
 # Others
 LJSPEECH = {

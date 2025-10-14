@@ -1,3 +1,4 @@
+# '''
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -34,8 +35,10 @@ class MLPClassifier(nn.Module):
 
     
     def forward(self, x):
+        # print("x.shape 1", x.shape)
         x = x.view(x.size(0), -1)
-
+        # x = x.mean(dim=2)
+        # print("x.shape 2", x.shape)
         x = F.relu(self.bn1(self.fc1(x)))
         #x = F.relu(self.fc1(x))
 
@@ -52,4 +55,4 @@ class MLPClassifier(nn.Module):
 
         x = self.fc_out(x)
         return x, None
-    
+# '''

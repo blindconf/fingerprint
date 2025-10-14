@@ -13,7 +13,7 @@ import numpy as np
 from matplotlib.ticker import FixedLocator, FixedFormatter
 from torch.utils.data import Sampler
 
-
+'''
 def create_train_validate_test_csvs(
     audio_dir,
     dest_dir,
@@ -198,6 +198,8 @@ def save_train_validate_test_dfs_to_csvs(csvs_dir, train_df, validate_df, test_d
     test_df.to_csv(os.path.join(csvs_dir, 'test.csv'), index=False)
 
     return train_df, validate_df, test_df
+   
+'''
 
 def get_train_validate_test_df(src_dir):
 
@@ -208,27 +210,6 @@ def get_train_validate_test_df(src_dir):
         dfs.append(subset_df)
     test_df, train_df, validate_df = dfs    
     return train_df, validate_df, test_df
-    
-def parse_asvspoof_protocol_by_class(protocol_path, audio_dir, allowed_attacks=None):
-    class_to_files = defaultdict(list)
-    with open(protocol_path, 'r') as f:
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) < 4:
-                continue
-            file_id = parts[1]
-            attack_type = parts[3]
-            label = parts[-1]
-
-            if label != "spoof":
-                continue
-            if allowed_attacks is not None and attack_type not in allowed_attacks:
-                continue
-            
-            wav_path = os.path.join(audio_dir, file_id + ".flac")
-            class_to_files[attack_type].append(wav_path)
-    
-    return class_to_files
 
 def get_asvspoof_paths(protocol_dir):
     # Remove trailing slash if present
@@ -246,17 +227,6 @@ def get_asvspoof_paths(protocol_dir):
     audio_dir_eval  = os.path.join(base_dir, "ASVspoof2019_LA_eval", "flac")
 
     return train_protocol, dev_protocol, eval_protocol, audio_dir_train, audio_dir_dev, audio_dir_eval
-
-def write_class_csv(class_to_files, dest_dir, classification_type):
-    for attack, files in sorted(class_to_files.items()):
-        label = DATASETS[classification_type][attack]
-        csv_path = os.path.join(dest_dir, f"{attack}.csv")
-        with open(csv_path, "w", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["path", "label"])
-            for path in sorted(files):
-                writer.writerow([path, label])
-    pass
 
 def create_asvspoof_csv_from_protocols(
     train_protocol, dev_protocol, eval_protocol,
@@ -381,6 +351,38 @@ def extract_bonafide_from_protocol(protocol_path, audio_dir):
                 real_paths.append(wav_path)
     return real_paths
 
+def parse_asvspoof_protocol_by_class(protocol_path, audio_dir, allowed_attacks=None):
+    class_to_files = defaultdict(list)
+    with open(protocol_path, 'r') as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) < 4:
+                continue
+            file_id = parts[1]
+            attack_type = parts[3]
+            label = parts[-1]
+
+            if label != "spoof":
+                continue
+            if allowed_attacks is not None and attack_type not in allowed_attacks:
+                continue
+            
+            wav_path = os.path.join(audio_dir, file_id + ".flac")
+            class_to_files[attack_type].append(wav_path)
+    
+    return class_to_files
+
+def write_class_csv(class_to_files, dest_dir, classification_type):
+    for attack, files in sorted(class_to_files.items()):
+        label = DATASETS[classification_type][attack]
+        csv_path = os.path.join(dest_dir, f"{attack}.csv")
+        with open(csv_path, "w", newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["path", "label"])
+            for path in sorted(files):
+                writer.writerow([path, label])
+    pass
+
 def save_real_csv(paths, out_path):
     with open(out_path, "w", newline="") as f:
         writer = csv.writer(f)
@@ -420,8 +422,7 @@ def save_real_splits_and_csvs(real_paths, seed, corpus_name, train_len, val_len,
 
     # Save full bonafide list
     save_real_csv(real_paths, os.path.join(full_csv_dir, "bonafide.csv"))
-
-
+    
 def load_or_construct_datasets(args):
     """
     Load train/val/test DataFrames for fake and real audio based on the corpus and seed.
@@ -474,18 +475,21 @@ def load_or_construct_datasets(args):
             cnt = 1
             all_fake_train, all_fake_val, all_fake_test = [], [], []
             dest_dir = f"csv_dir/{args.corpus}/fake_audio/multiclass"
-
-            for cat_file in sorted(os.listdir(args.fake_data_path)):
+            valid_exts = {".wav", ".flac", ".mp3"}  
+            for cat_file in sorted(os.listdir(args.data_path)):
                 if not cat_file in wavefake_dic[args.corpus]:
                     continue
                 data = []
-                for file_name in sorted(os.listdir(f"{args.fake_data_path}/{cat_file}")):
-                    cat_file_path = os.path.normpath(os.path.join(args.fake_data_path, cat_file, file_name))
+                for file_name in sorted(os.listdir(f"{args.data_path}/{cat_file}")):
+                    if not any(file_name.lower().endswith(ext) for ext in valid_exts):
+                        continue  # skip non-audio files
+                    cat_file_path = os.path.normpath(os.path.join(args.data_path, cat_file, file_name))
                     data.append({"path": cat_file_path, "label": cnt})
                     
                 # Convert to DataFrame
                 df = pd.DataFrame(data)
-                fake_df = df.sample(frac=1, random_state=args.seed)  # shuffle
+                df = df.sort_values("path").reset_index(drop=True)
+                fake_df = df.sample(frac=1, random_state=args.seed).reset_index(drop=True)
                 n = len(fake_df)
                 train_end = int(0.8 * n)
                 val_end = train_end + int(0.1 * n)
@@ -544,7 +548,7 @@ def load_or_construct_datasets(args):
 
     elif args.corpus == "asvspoof":
         # Get protocol and audio paths
-        train_protocol, dev_protocol, eval_protocol, audio_dir_train, audio_dir_dev, audio_dir_eval = get_asvspoof_paths(args.protocol_path)
+        train_protocol, dev_protocol, eval_protocol, audio_dir_train, audio_dir_dev, audio_dir_eval = get_asvspoof_paths(args.data_path)
 
         # Create full CSVs per class
         create_asvspoof_csv_from_protocols(
@@ -757,10 +761,12 @@ def load_or_construct_datasets(args):
 def get_caching_paths(cache_dir: str, 
                       args: dict, 
                       target_model: str) -> dict:
-    fingerprint_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_fingerprint.pickle"
-    invcov_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_invcov.pickle"
+    nfft = int(args.window_size / 1000 * args.sample_rate)
+    hop_len = int(args.hop_size / 1000 * args.sample_rate)
+    fingerprint_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={nfft}_hoplen={hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_fingerprint.pickle"
+    invcov_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={nfft}_hoplen={hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_invcov.pickle"
     # trend path is only accessed if args.trend_correction==True
-    trend_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_trend.pickle"
+    trend_path = f"{cache_dir}/{target_model}/param={args.filter_param}_score={args.scorefunction}_nfft={nfft}_hoplen={hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={target_model}_trend.pickle"
     return {"fingerprint": fingerprint_path, "invcov": invcov_path, "trend": trend_path}
 
 def pad_and_concatenate(tensor_list, concat_dim=0):
@@ -844,8 +850,9 @@ def get_auc_path(args:dict) -> str:
     auc_dir = f'aucs/{args.corpus}/{args.seed}/{args.filter_type}_Avg_Spec_aucs'
     if args.filter_type == "EncodecFilter":
         auc_dir = f'aucs/{args.corpus}/{args.seed}/{args.filter_type}-compute_samplewise={args.encodec_samplewise}_Avg_Spec_aucs'
-    
-    auc_path = f"{auc_dir}/{args.scorefunction}_param={args.filter_param}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_corrtype{args.corruption_type}_{args.scale_factor}.xlsx"
+    nfft = int(args.window_size / 1000 * args.sample_rate)
+    hop_len = int(args.hop_size / 1000 * args.sample_rate)
+    auc_path = f"{auc_dir}/{args.scorefunction}_param={args.filter_param}_nfft={nfft}_hoplen={hop_len}_trend={args.trend_correction}.xlsx"
 
     return auc_path 
 

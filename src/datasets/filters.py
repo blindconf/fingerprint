@@ -51,9 +51,8 @@ class TimeInvFIRFilter(Conv1dKeepLength):
                 non-causal: y_i = sum_k=0^K a_k x_i+K/2-k
         flag_trainable: whether update filter coefficients (default False)
     """                                                                   
-    def __init__(self, feature_dim, filter_coef, dev, causal=True, 
+    def __init__(self, feature_dim, filter_coef, causal=True, 
                  flag_trainable=False):
-        self.dev = dev
         # define based on Conv1d with stride=1, tanh=False, bias=False
         # groups = feature_dim make sure that each signal is filtered separated 
         super(TimeInvFIRFilter, self).__init__(                              
@@ -63,7 +62,7 @@ class TimeInvFIRFilter(Conv1dKeepLength):
         if filter_coef.ndim == 1:
             # initialize weight and load filter coefficients
             with torch.no_grad():
-                tmp_coef = torch.zeros([feature_dim, 1, filter_coef.shape[0]]).to(self.dev)
+                tmp_coef = torch.zeros([feature_dim, 1, filter_coef.shape[0]])
                 tmp_coef[:, 0, :] = filter_coef
                 tmp_coef = torch.flip(tmp_coef, dims=[2])
                 self.weight = torch.nn.Parameter(tmp_coef, requires_grad = flag_trainable)
@@ -78,17 +77,16 @@ class TimeInvFIRFilter(Conv1dKeepLength):
 
 class filter_fn:
     # name = "low_pass_filter"
-    def __init__(self, signal_dim, coef, dev):
+    def __init__(self, signal_dim, coef):
         self.signal_dim = signal_dim
         self.coef = coef
-        self.dev = dev
-        self.filter_layer = TimeInvFIRFilter(self.signal_dim, self.coef, self.dev)
+        self.filter_layer = TimeInvFIRFilter(self.signal_dim, self.coef)
     
     def forward(self, batch: torch.Tensor) -> torch.Tensor:
         # batch = batch.unsqueeze(-1)
         # Rearrange the dimensions
         #batch = batch.permute(0, 2, 1)
-        self.filter_layer.weight = self.filter_layer.weight.to(self.dev)
-        batch = self.filter_layer(batch)
-        return batch
+        # self.filter_layer.weight = self.filter_layer.weight.to(self.dev)
+        # batch = self.filter_layer(batch)
+        return self.filter_layer(batch)
         #return batch.permute(0, 2, 1)

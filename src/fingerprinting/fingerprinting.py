@@ -20,12 +20,14 @@ class WaveformToAvgSpec:
         device (str): Device to run computations ('cuda' or 'cpu').
     """
     def __init__(self, 
-                 n_fft,
-                 hop_length,
+                 window_size,
+                 hop_size,
+                 sample_rate,
                  to_db=True,
                  device="cuda"):
-        self.n_fft = n_fft
-        self.hop_length = hop_length
+        
+        self.n_fft = int(window_size / 1000 * sample_rate) 
+        self.hop_length = int(hop_size / 1000 * sample_rate) 
         
         self.transf = torchaudio.transforms.Spectrogram(n_fft=self.n_fft,
                                                         hop_length=self.hop_length).to(device)
@@ -111,6 +113,7 @@ class FingerprintingWrapper:
             self.trend = torch.mean(residuals_real, dim=0)
         # Handle Oracle filter separately
         if self.filter.name == 'Oracle':
+            assert ds_real is not None, "ds_real was not specified"
             total_batches = min(len(dl), len(ds_real))
             for batch1, batch2 in tqdm(zip(dl, ds_real), total=total_batches, desc="Processing Batches"):
                 output_1_path = batch1[3]
@@ -139,7 +142,6 @@ class FingerprintingWrapper:
                 self.invcov = torch.inverse(covariance)
         else:
             # Compute fingerprint for standard filters        
-            assert ds_real is not None, "ds_real was not specified"
             for i in tqdm(dl, desc="Computing fingerprint"):
                 batch = i[0]
                 original_audio_lengths = i[1]
@@ -220,10 +222,7 @@ class FingerprintingWrapper:
                 path = i[3]                
                 if self.filter.name == "EncodecFilter":
                     filtered_audio = self.filter.forward(audio, batch_sample_rate)
-                else self.filter.name in ["low_pass_filter", 
-                                        "high_pass_filter",
-                                        "band_pass_filter",
-                                        "band_stop_filter"]:
+                else:
                     filtered_audio = self.filter.forward(audio)            
                 
                 avg_ = self.transformation.forward(audio, original_audio_lengths)
@@ -321,7 +320,16 @@ def mahalanobis_score(fingerprint, batch_residual, invcov):
         score = torch.sqrt(torch.dot(delta, torch.matmul(invcov, delta)))
         scores.append(-1 * score.item())
     return torch.tensor(scores)
-
+'''
+def mahalanobis_score(fingerprint, batch_residual, invcov, DEV):
+    batch_size = batch_residual.shape[0]
+    scores = torch.empty(batch_size, device=DEV)
+    for i in range(batch_size):
+        input_residual = batch_residual[i, :, :]
+        delta = input_residual.flatten() - fingerprint.flatten()
+        scores[i] = -torch.sqrt(torch.dot(delta, torch.matmul(invcov, delta)))
+    return scores
+'''
 # Function to extract the name up to the first underscore
 def extract_name(filepath):
     # Get just the filename from the full path
@@ -390,15 +398,6 @@ def load_fingerprints(fing_path, filter_param, scorefunction, nfft, hop_len, cla
             "params": params
         })
     return fingerprints
-
-def mahalanobis_score(fingerprint, batch_residual, invcov, DEV):
-    batch_size = batch_residual.shape[0]
-    scores = torch.empty(batch_size, device=DEV)
-    for i in range(batch_size):
-        input_residual = batch_residual[i, :, :]
-        delta = input_residual.flatten() - fingerprint.flatten()
-        scores[i] = -torch.sqrt(torch.dot(delta, torch.matmul(invcov, delta)))
-    return scores
 
 def evasion_attack_scores(residuals, fingerprints, orig_labels, target_labels, label_map_inv, DEV):
     batch_size = residuals.shape[0]

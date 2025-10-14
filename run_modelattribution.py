@@ -67,10 +67,9 @@ def parse_args():
     parser.add_argument("--filter_param", type=str, default="1", help="Parameter of the filter.")
     parser.add_argument("--scorefunction", choices=["mahalanobis", "correlation"], default="mahalanobis", help="Type of scoring function to use.")
     # Data and processing paths
-    parser.add_argument("--nfft", type=int, default=128, help="Number of FFT points for creating the Spectrograms.")
-    parser.add_argument("--hop_len", type=int, default=2, help="Hop length for creating the Spectrograms.")
+    parser.add_argument("--window_size", type=float, default=8, help="STFT window size (in milliseconds), i.e., the duration of each analysis frame.")
+    parser.add_argument("--hop_size", type=float, default=0.125, help="STFT hop size (in milliseconds), i.e., the step between consecutive frames.")
     parser.add_argument("--seed", type=int, default=40, help="Default seed 40.")
-    parser.add_argument("--cutoff", type=int, default=None, help="Cutoff first frequency bins for fingerprinting.")
     # Additional processing details
     parser.add_argument("--trend_correction", action="store_true", help="Correct the filter trend.")
     parser.add_argument("--batchsize", type=int, default=24, help="Adjust batch size as needed.")
@@ -152,7 +151,7 @@ def main(args):
         audio_filter = FILTERS[args.filter_type](1, coef, args.filter_type)
     # Create a transformation to convert waveforms into averaged spectrograms.
     # This is the core feature representation for fingerprinting.
-    transformation = WaveformToAvgSpec(n_fft=args.nfft, hop_length=args.hop_len)
+    transformation = WaveformToAvgSpec(window_size=args.window_size, hop_size=args.hop_size, sample_rate=args.sample_rate, device=device)
     # Assume train_df is already defined and loaded
     attack_labels = sorted(train_df["label"].unique())
     attack_test_labels = sorted(test_df["label"].unique())
@@ -163,15 +162,17 @@ def main(args):
     os.makedirs(finger_folder, exist_ok=True)
     num_train_data_dict = {}
     # Loop over each attack label (each fake model) to train a dedicated fingerprint.
+    nfft = int((args.window_size / 1000) * args.sample_rate)
+    hop_len = int((args.hop_size / 1000) * args.sample_rate)
     for label in attack_labels:
         os.makedirs(f"{finger_folder}/{CORPUS_DICT_REVERSE[label]}", exist_ok=True)
         attack_df = train_df[train_df["label"] == label]        
         args.num_train = len(attack_df)
         num_train_data_dict[label] = args.num_train
         # Sanity check for Mahalanobis scoring function
-        if args.scorefunction == "mahalanobis" and args.num_train * 2 < args.nfft:
+        if args.scorefunction == "mahalanobis" and args.num_train * 2 < nfft:
             logger.error("The sample size is too small for Mahalanobis scoring.")
-            sys.exit(f"The sample size is too small. Consider reducing the nfft value ({args.nfft}) or increasing the number of training samples ({args.num_train}).")
+            sys.exit(f"The sample size is too small. Consider reducing the nfft value ({nfft}) or increasing the number of training samples ({args.num_train}).")
 
         wrapper = FingerprintingWrapper(filter=audio_filter, 
                                         transformation=transformation, 
@@ -232,7 +233,7 @@ def main(args):
             if args.plot_flg:
                 plot_folder = f"plots/fingerprint/residuals/{args.corpus}/{args.seed}/{args.filter_type}"      
                 os.makedirs(plot_folder, exist_ok=True)
-                plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={CORPUS_DICT_REVERSE[label]}.pdf"
+                plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={nfft}_hoplen={hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_model={CORPUS_DICT_REVERSE[label]}.pdf"
                 plot_finger_freq(args.sample_rate, wrapper.fingerprint, wrapper.name, plot_path)
     
     # Evaluate each trained fingerprint against all test models (cross-model comparison).
@@ -289,13 +290,13 @@ def main(args):
                                         )
 
                 if args.filter_type == 'Oracle':
-                    output = wrapper.forward(audio_test_dataloader, real_audio_dataloader, cutoff=args.cutoff)
+                    output = wrapper.forward(audio_test_dataloader, real_audio_dataloader)
                 else:    
-                    output = wrapper.forward(audio_test_dataloader, cutoff=args.cutoff)
+                    output = wrapper.forward(audio_test_dataloader)
                 outputs[label_test] = output.cpu().tolist()
                 
             if args.filter_type != 'Oracle':
-                output = wrapper.forward(real_audio_dataloader, cutoff=args.cutoff)
+                output = wrapper.forward(real_audio_dataloader)
                 outputs[0] = output.cpu().tolist()
             auc_results[f"{CORPUS_DICT_REVERSE[label]}"] = []
 
@@ -303,7 +304,7 @@ def main(args):
                 if label != key_dict:                
                     labels = [1] * len(outputs[label]) + [0] * len(outputs[key_dict])
                     auc = roc_auc_score(labels, outputs[label] + outputs[key_dict])
-                    logger.info(f"AUC: {auc:.4f} | Filter Param: {args.filter_param}, NFFT: {args.nfft} | {CORPUS_DICT_REVERSE[label]} vs {CORPUS_DICT_REVERSE[key_dict]}")
+                    logger.info(f"AUC: {auc:.4f} | Filter Param: {args.filter_param}, NFFT: {nfft} | {CORPUS_DICT_REVERSE[label]} vs {CORPUS_DICT_REVERSE[key_dict]}")
 
                     key_test_against = f"{CORPUS_DICT_REVERSE[key_dict]}"
                     auc_results[f"{CORPUS_DICT_REVERSE[label]}"].append({'vs_model': key_test_against, 'AUC': auc})
@@ -312,7 +313,7 @@ def main(args):
                     if args.plot_flg:
                         plot_folder = f"plots/fingerprint/histograms/{args.corpus}/{args.seed}/{args.filter_type}"
                         os.makedirs(plot_folder, exist_ok=True)
-                        plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={args.nfft}_hoplen={args.hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_models={CORPUS_DICT_REVERSE[label]}_vs_{CORPUS_DICT_REVERSE[key_dict]}.png"
+                        plot_path = f"{plot_folder}/param={args.filter_param}_score={args.scorefunction}_nfft={nfft}_hoplen={hop_len}_trend={args.trend_correction}_ntrain={args.num_train}_models={CORPUS_DICT_REVERSE[label]}_vs_{CORPUS_DICT_REVERSE[key_dict]}.png"
                         if args.scorefunction == "correlation":                    
                             x_label = "Correlation"
                         else:

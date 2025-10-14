@@ -20,6 +20,8 @@ from src.training.loss_functions import vfd_loss_function, non_vfd_loss_function
 from src.training.arguments import MODELS
 from src.training.invariables import DATASETS, DEV, BINARY_CLASS_LABELS, CLASSES
 import re
+from src.models.mlp_2 import ResSEMLP
+from src.models.ResSECNN import ResSECNN 
 
 
 def set_seed(seed):
@@ -63,8 +65,9 @@ def get_model(model, classification_type, num_classes,input_size=None):
     elif (model == "vfd-resnet"):
         model = resnet18(num_classes=num_classes)
     elif (model == "fingerprint"):
-        model = MLPClassifier(input_size=input_size, num_classes=num_classes)
-
+        model = ResSECNN(num_classes=num_classes)
+    elif (model == "fingerprint_2"):
+        model = ResSEMLP(input_size=input_size, num_classes=num_classes)
     return model
 
 
