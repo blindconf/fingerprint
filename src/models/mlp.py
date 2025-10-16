@@ -38,7 +38,6 @@ class MLPClassifier(nn.Module):
         # print("x.shape 1", x.shape)
         x = x.view(x.size(0), -1)
         # x = x.mean(dim=2)
-        # print("x.shape 2", x.shape)
         x = F.relu(self.bn1(self.fc1(x)))
         #x = F.relu(self.fc1(x))
 

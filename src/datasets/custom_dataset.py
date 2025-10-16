@@ -5,7 +5,6 @@ from torchaudio.transforms import Resample
 from torch.utils.data import Dataset
 from src.datasets.filters import filter_fn
 from torchaudio.transforms import LFCC, MelSpectrogram, MFCC, Spectrogram
-from src.training.invariables import DEV
 import os
 import warnings
 
@@ -41,14 +40,16 @@ class CustomDataset(Dataset):
                                     "win_length": int(0.025 * self.target_sample_rate),
                                     "hop_length": int(0.01 * self.target_sample_rate)
                                 }
-                            )# .to(DEV)
+                            )
 
 
         elif model in ["fingerprint", "fingerprint_2"]:
             self.transform = Spectrogram(
                                     n_fft = n_fft,
+                                    win_length = n_fft, 
                                     hop_length = hop_length
-                                    )# .to(DEV)
+                                    )
+            # self.transform = lambda x: 10. * torch.log10(spec(x) + 1e-10) 
             self.filter_fn = filter_fn(1, coef)
 
         elif model == "vfd-resnet":
@@ -74,22 +75,25 @@ class CustomDataset(Dataset):
         sample_uri, label = row["path"], row["label"]
 
         waveform, sr = load(sample_uri)
-        waveform = waveform.float()# .to(DEV)
+        waveform = waveform.float()
         # print(self.sample_rate, self.target_sample_rate)
         waveform = self.resampler(waveform)
-
+        # features = self.transform(waveform) # .squeeze(0)
         if self.model in ["fingerprint", "fingerprint_2"]:
             filt_feat = self.filter_fn.forward(waveform)
             waveform, filt_feat = self.match_length(waveform, filt_feat) 
             trans_feat = self.transform(waveform).squeeze(0)
             trans_filt_feat = self.transform(filt_feat).squeeze(0)
             features = trans_feat - trans_filt_feat
-
+            # features = torch.nanmean(features, dim=-1)
+            # print(features.shape)
         elif self.transform is not None:
             features  = self.transform(waveform).squeeze(0)
             # print(features.shape)
         else:
             features = waveform
+        
+        # features = torch.nanmean(features, dim=-1)
         '''
         # Normalize if stats provided
         if self.mean is not None and self.std is not None:

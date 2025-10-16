@@ -24,9 +24,9 @@ from tqdm import tqdm
 from tabulate import tabulate
 from torch.utils.data import DataLoader
 from torch import Generator
-from src.datasets.utility import collate_fn, get_datasets, StratifiedSampler # , fingerprints_collate_fn
+from src.datasets.utility import collate_fn, get_datasets, StratifiedSampler, fingerprints_collate_fn
 from src.training.utility import get_model, get_optimizer_scheduler_loss_function, get_metric, save_confusion_matrix_to_excel, save_heatmap, set_seed
-from src.training.invariables import DEV, DEVICE_IDS, CLASSES, DATASETS
+from src.training.invariables import DEV, DEVICE_IDS, BATCH_SIZE, CLASSES, DATASETS
 from src.training.arguments import MODELS, CLASSIFICATION_TYPES, PERFORMANCE_METRICS
 import re
 import torch.multiprocessing as mp
@@ -36,48 +36,33 @@ from src.datasets.filters import filter_fn
 from src.fingerprinting.fingerprinting import load_fingerprints, compute_mahalanobis_scores, assign_vocoders, WaveformToAvgSpec
 import torch.nn as nn
 
+from torchaudio.transforms import Spectrogram
 
 @click.command()
-# Dataset selection: ljspeech, jsut, or asvspoof
-@click.option('--corpus', type=click.Choice(["ljspeech", "jsut", "asvspoof", "codecfake"]), required=True, default="ljspeech", help="Dataset corpus to use.")
-# Filter configuration
-@click.option('--filter_type', type=click.Choice(["low_pass_filter", "band_pass_filter"]), required=True, default="low_pass_filter", help="Type of filter to apply to the audio signal.")
-@click.option('--filter_param', type=str, default=1, required=True, help="Parameter of the filter.")
-@click.option('--scorefunction', type=click.Choice(["mahalanobis", "correlation"]), required=True, default="mahalanobis", help="Type of scoring function to use.")
-# Data and processing paths
-@click.option("--window_size", type=float, default=8, help="STFT window size (in milliseconds), i.e., the duration of each analysis frame.")
-@click.option("--hop_size", type=float, default=0.125, help="STFT hop size (in milliseconds), i.e., the step between consecutive frames.")
-@click.option('--seed', type=int, default=40, help='Random seed.')
-
-# Model setting
 @click.option('--model', type=click.Choice(MODELS), required=True, help='Model to train.')
 @click.option('--classification_type', type=click.Choice(CLASSIFICATION_TYPES), required=True, help='Classification type.')
 @click.option('--performance_metric', type=click.Choice(PERFORMANCE_METRICS), default="f1_score", help='Performance metric.')
+#@click.option('--save_id', type=int, required=True, help='ID for saving the model.')
+@click.option('--seed', type=int, default=40, help='Random seed.')
 @click.option('--corruption_type', type=int, default=0, help='Evaluate under evasion attack: 0 = no evasion attack, 1 = evasion attack')
-@click.option('--use_nn', type=int, default=1, help='Set to 1 to use a DNN for the binary classifier under the fingerprint model, 0 to disable.')
-
-# Additional processing details
 @click.option('--scale_factor', type=float, default=1.0, help='It compresses or dilates the given impulse response.') 
+@click.option('--use_nn', type=int, default=1, help='Set to 1 to use a DNN for the binary classifier under the fingerprint model, 0 to disable.')
+@click.option('--corpus', type=click.Choice(["ljspeech", "jsut", "asvspoof", "codecfake"]), required=True, default="ljspeech", help="Dataset corpus to use.")
+@click.option('--filter_param', type=str, default=1, required=True, help="Parameter of the filter.")
+@click.option('--filter_type', type=click.Choice(["low_pass_filter", "band_pass_filter"]), required=True, default="low_pass_filter", help="Type of filter to apply to the audio signal.")
+@click.option('--scorefunction', type=click.Choice(["mahalanobis", "correlation"]), required=True, default="mahalanobis", help="Type of scoring function to use.")
+@click.option('--nfft', type=int, default=128, help='Number of FFT points for creating the Spectrograms.')
+@click.option('--hop_len', type=int, default=2, help='Hop length for creating the Spectrograms.')
 @click.option('--epochs', type=int, default=10, help='Number of epochs.')
-@click.option('--num_workers_opt', type=int, default=4, help='how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process.')
-@click.option('--batchsize', type=int, default=24, help='Adjust batch size as needed.')
+@click.option('--num_workers_opt', type=int, default=2, help='how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process.')
 
+# By default proportional is False
 
-def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size, seed, model, classification_type, performance_metric, corruption_type, use_nn, scale_factor, epochs, num_workers_opt, batchsize):   # save_id
+def main(model, classification_type, performance_metric, seed, corruption_type, scale_factor, use_nn, corpus, filter_param, filter_type, scorefunction, nfft, hop_len, epochs, num_workers_opt):   # save_id
 
     set_seed(seed)
     init_loss_functions(seed)
 
-    # Get Dataloader
-    if corpus == "jsut":
-        sample_rate = 24000
-    elif corpus == "ljspeech":
-        sample_rate = 22050
-    else:
-        sample_rate = 16000
-    
-    nfft = int((window_size / 1000) * sample_rate)
-    hop_len = int((hop_size / 1000) * sample_rate)
     # Set up directory where to save model and logs
     BASE_DIR = os.getcwd()
     URL_DIR_TO_SAVE_MODELS_AND_LOGS = os.path.join(BASE_DIR, "trained_models") 
@@ -93,9 +78,20 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
     for y in file_in.read().split('\n'):
         x.append(float(y))
     coef = torch.tensor(x)
+    FILTER = filter_fn(1, coef, dev=DEV)
+
+    AVG_SPEC =  WaveformToAvgSpec(n_fft=nfft, hop_length=hop_len, device=DEV).forward
 
     if not os.path.exists(url_dir_to_save_model):
         os.makedirs(url_dir_to_save_model)
+
+    # Get Dataloader
+    if corpus == "jsut":
+        sample_rate = 24000
+    elif corpus == "ljspeech":
+        sample_rate = 22050
+    else:
+        sample_rate = 16000
 
     train_ds, validate_ds, test_ds, test_2_ds = get_datasets(
         model=model,
@@ -106,9 +102,8 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         corpus=corpus,
         mean_std_dir=MEAN_STD_FOLDER_DIR,
         sample_rate=sample_rate,
-        coef=coef,
-        n_fft=nfft, 
-        hop_length=hop_len
+        filter_fn=FILTER,
+        AVG_SPEC=AVG_SPEC
         )
 
     generator = Generator().manual_seed(seed)
@@ -116,13 +111,11 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
     # run vocoder_fingerprint_attribution.py if model == fingerprints and classification_type is multiclass
     if model != "fingerprint" or (model == "fingerprint" and use_nn == 1):
         # Get model
-        '''
-        if model == "fingerprint_2" :
-            my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes, input_size=nfft // 2 + 1)
+        if model == "fingerprint":
+            # my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes, input_size=nfft // 2 + 1)
+            my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes)
         else:
             my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes)
-        '''
-        my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes)
         my_model = DataParallel(my_model, device_ids=DEVICE_IDS).to(DEV)
 
         # Get optimizer, scheduler and loss function
@@ -154,23 +147,27 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         testing_score_df = pd.DataFrame(
             columns=["Testing_Accuracy", "Testing_F1_Score", "Testing_Precision", "Testing_Recall", "Testing_AUROC"]
         )
-        '''
+        
         if os.path.exists(f'{url_dir_to_save_model}/best_model.pth'):
             checkpoint = torch.load(f'{url_dir_to_save_model}/best_model.pth',
                             map_location=lambda storage, loc: storage.cuda(0) if torch.cuda.is_available() else storage)
             my_model.load_state_dict(checkpoint)
-            my_model.to(DEV)
             print("Best model found!", url_dir_to_save_model)
-        '''
+
         # --- DataLoader setup ---
         sampler = None
         shuffle = True
+        if model == "fingerprint":
+            # col_fn = fingerprints_collate_fn
+            col_fn = collate_fn
+        else:
+            col_fn = collate_fn
 
         if not os.path.exists(f'{url_dir_to_save_model}/best_model.pth'):
 
             print(f'Initializing {model} model training...')
-            train_loader = DataLoader(train_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=collate_fn, shuffle=shuffle, sampler=sampler)
-            validation_loader = DataLoader(validate_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=collate_fn)
+            train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE[model], num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=col_fn, shuffle=shuffle, sampler=sampler)
+            validation_loader = DataLoader(validate_ds, batch_size=BATCH_SIZE[model], num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=col_fn)
 
             # Create performance dataframe for training/validating
             training_validating_score_df = pd.DataFrame(
@@ -184,6 +181,11 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
             best_score = 0
             print('Training started...')
             
+            transform = Spectrogram(
+                                    n_fft = int(0.025 * sample_rate),
+                                    hop_length = int(0.01 * sample_rate)
+                                    ).to(DEV)
+
             for epoch in tqdm(range(n_epochs), desc="Training Epochs"):
                 # Reset metrics
                 accuracy.reset(), f1.reset(), precision.reset()
@@ -195,8 +197,28 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
 
                 for batch  in tqdm(train_loader, desc="Training batches"):
                     # Transfer to device
-                    waveforms, labels = batch
-                    inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                    if model == "fingerprint":
+                        # waveforms, labels, original_lens = batch
+                        waveforms, labels = batch
+                        waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                        # inputs = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
+                        '''
+                        if original_lens is None:
+                            original_lens = [waveforms.shape[-1]]
+                        transformed_features = AVG_SPEC(waveforms, original_lens)
+                        filtered_signals = FILTER.forward(waveforms)
+                        transformed_filtered_features = AVG_SPEC(filtered_signals, original_lens)
+                        inputs = transformed_features - transformed_filtered_features
+                        '''
+                        # print(waveforms.shape)
+                        inputs = transform(waveforms)
+                        # print(inputs.shape)
+                        # print(waveforms.shape, filtered_signals.shape)
+                        # print(inputs.shape)
+                        # print(afgasf)
+                    else:
+                        waveforms, labels = batch
+                        inputs, labels = waveforms.to(DEV), labels.to(DEV)
                     if "binary" in classification_type:
                         labels = labels.float().unsqueeze(1)
                     else:
@@ -204,6 +226,7 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                     # Zero gradients
                     optimizer.zero_grad()
                     # Forward pass
+                    # print(inputs.shape)
                     outputs, features = my_model(inputs)
                     loss = loss_function(outputs, features, labels)
                     # Backward pass and optimization
@@ -234,15 +257,29 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 
                 # LCNN: BatchNorm collapses in evaluation because its running mean and variance are inaccurate for small batches,
                 #  especially after channel-halving operations like MFM, causing outputs to shrink even with dropout disabled.
-                # Pending: Do some testing!!!
                 if model not in ["lcnn"]:
                     my_model.eval()
 
                 validating_loss = 0.0
                 with torch.no_grad():
                     for batch in tqdm(validation_loader, desc="Validation batches"):
-                        waveforms, labels = batch
-                        inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                        if model == "fingerprint":
+                            # waveforms, labels, original_lens = batch
+                            waveforms, labels = batch
+                            waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                            # inputs = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
+                            '''
+                            if original_lens is None:
+                                original_lens = [waveforms.shape[-1]]
+                            transformed_features = AVG_SPEC(waveforms, original_lens)
+                            filtered_signals = FILTER.forward(waveforms)
+                            transformed_filtered_features = AVG_SPEC(filtered_signals, original_lens)
+                            inputs = transformed_features - transformed_filtered_features
+                            '''
+                            inputs = transform(waveforms)
+                        else:
+                            waveforms, labels = batch
+                            inputs, labels = waveforms.to(DEV), labels.to(DEV)
                         if "binary" in classification_type:
                             labels = labels.float().unsqueeze(1)
                         else:
@@ -314,7 +351,7 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
 
         # === Test Phase ===
         print("\nTesting the best model...")
-        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=collate_fn)
+        test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE[model], num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=col_fn)
         # for i in tqdm(test_ds, desc="Testing batches"):
         #  continue
         # my_model.load_state_dict(torch.load(f'{url_dir_to_save_model}/best_model.pth'))
@@ -331,13 +368,27 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
 
         with no_grad():
             for batch in tqdm(test_loader, desc="Testing batches"):
-                waveforms, labels = batch
-                inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                if model == "fingerprint":
+                    # waveforms, labels, original_lens = batch
+                    waveforms, labels = batch
+                    waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                    # inputs = waveform_to_residual(waveforms, FILTER, AVG_SPEC, original_lens)
+                    '''
+                    if original_lens is None:
+                        original_lens = [waveforms.shape[-1]]
+                    transformed_features = AVG_SPEC(waveforms, original_lens)
+                    filtered_signals = FILTER.forward(waveforms)
+                    transformed_filtered_features = AVG_SPEC(filtered_signals, original_lens)
+                    inputs = transformed_features - transformed_filtered_features
+                    '''
+                    inputs = transform(waveforms)
+                else:
+                    waveforms, labels = batch
+                    inputs, labels = waveforms.to(DEV), labels.to(DEV)
                 if "binary" in classification_type:
                     labels = labels.float().unsqueeze(1)
                 else:
-                    labels = labels -1     
-                # print(inputs.shape)               
+                    labels = labels -1                    
                 # Forward pass
                 outputs, features = my_model(inputs)
                 probabilities = prob_func(outputs)
@@ -379,9 +430,6 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         print("Scores saved...")
     else:
         print(f'Initializing fingerprints scoring...')
-        FILTER = filter_fn(1, coef)
-        FILTER = FILTER.to(DEV)  # move to GPU or CPU as needed
-        AVG_SPEC =  WaveformToAvgSpec(n_fft=nfft, hop_length=hop_len, device=DEV).forward
         # construct command to run vocoder_fingerprint_attribution.py
         FINGERPRINT_DIR = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}/{model}/{corpus}/{seed}/{filter_type}'
         # Load fingerprints
@@ -389,7 +437,7 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         all_preds = []
         all_labels = []
         print("Scoring initialized...")
-        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=False, generator=generator, collate_fn=fingerprints_collate_fn)
+        test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE[model], num_workers=num_workers_opt, persistent_workers=True, pin_memory=False, generator=generator, collate_fn=fingerprints_collate_fn)
         label_map_inv = {v: k for k, v in DATASETS[corpus].items()}
         print(DATASETS[corpus].items())
         print(label_map_inv)        
@@ -400,6 +448,7 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 original_lens = [waveforms.shape[-1]]
             transformed_features = AVG_SPEC(waveforms, original_lens)
             filtered_signals = FILTER.forward(waveforms)
+
             transformed_filtered_features = AVG_SPEC(filtered_signals, original_lens)
             residuals = transformed_features - transformed_filtered_features
     
