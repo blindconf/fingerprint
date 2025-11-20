@@ -3,7 +3,7 @@ import torch
 from torchaudio import load
 from torchaudio.transforms import Resample
 from torch.utils.data import Dataset
-from src.datasets.filters import filter_fn
+# from src.datasets.filters import filter_fn
 from torchaudio.transforms import LFCC, MelSpectrogram, MFCC, Spectrogram
 import os
 import warnings
@@ -25,9 +25,9 @@ class CustomDataset(Dataset):
         self.resampler = Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
         self.postprocess = postprocess
         self.seed = seed
-        self.coef = coef
-        self.n_fft = n_fft
-        self.hop_length = hop_length
+        # self.coef = coef
+        # self.n_fft = n_fft
+        # self.hop_length = hop_length
 
         self.corruption_type = corruption_type
 
@@ -41,16 +41,6 @@ class CustomDataset(Dataset):
                                     "hop_length": int(0.01 * self.target_sample_rate)
                                 }
                             )
-
-
-        elif model in ["fingerprint", "fingerprint_2"]:
-            self.transform = Spectrogram(
-                                    n_fft = n_fft,
-                                    win_length = n_fft, 
-                                    hop_length = hop_length
-                                    )
-            # self.transform = lambda x: 10. * torch.log10(spec(x) + 1e-10) 
-            self.filter_fn = filter_fn(1, coef)
 
         elif model == "vfd-resnet":
             mel = MelSpectrogram(
@@ -68,7 +58,16 @@ class CustomDataset(Dataset):
         else:
             self.transform = None
 
-
+        '''
+        elif model in ["fingerprint", "fingerprint_2"]:
+            self.transform = Spectrogram(
+                                    n_fft = n_fft,
+                                    win_length = n_fft, 
+                                    hop_length = hop_length
+                                    )
+            # self.transform = lambda x: 10. * torch.log10(spec(x) + 1e-10) 
+            self.filter_fn = filter_fn(1, coef)
+        '''
     def __getitem__(self, index):
 
         row = self.df.iloc[index]
@@ -79,15 +78,25 @@ class CustomDataset(Dataset):
         # print(self.sample_rate, self.target_sample_rate)
         waveform = self.resampler(waveform)
         # features = self.transform(waveform) # .squeeze(0)
-        if self.model in ["fingerprint", "fingerprint_2"]:
-            filt_feat = self.filter_fn.forward(waveform)
-            waveform, filt_feat = self.match_length(waveform, filt_feat) 
-            trans_feat = self.transform(waveform).squeeze(0)
-            trans_filt_feat = self.transform(filt_feat).squeeze(0)
-            features = trans_feat - trans_filt_feat
-            # features = torch.nanmean(features, dim=-1)
-            # print(features.shape)
-        elif self.transform is not None:
+        # if self.model in ["fingerprint", "fingerprint_2"] :
+        '''
+        print("waveform: ", waveform, waveform.shape)
+        filt_feat = self.filter_fn.forward(waveform)
+        print("filt_feat: ", filt_feat, filt_feat.shape)
+
+        print(asfasfasf)
+        waveform, filt_feat = self.match_length(waveform, filt_feat) 
+        trans_feat = self.transform(waveform).squeeze(0)
+        trans_filt_feat = self.transform(filt_feat).squeeze(0)
+        features = trans_feat - trans_filt_feat
+        '''
+
+        # if self.classification_type=='multiclass':
+            # features = waveform
+            # features = features.mean(dim=1)
+        # features = torch.nanmean(features, dim=-1)
+        # print(features.shape)
+        if self.transform is not None :
             features  = self.transform(waveform).squeeze(0)
             # print(features.shape)
         else:
@@ -107,7 +116,6 @@ class CustomDataset(Dataset):
                 features = features[:, :64]
             # '''
             features = self.postprocess(features)
-                
         return features, torch.tensor(label, dtype=torch.long)
 
     def __len__(self):

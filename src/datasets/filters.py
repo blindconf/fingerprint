@@ -1,6 +1,8 @@
+'''
 from torch.nn import Tanh, Identity, Conv1d
 import torch
 import sys
+import torch.nn.functional as torch_nn_func
 
 
 class Conv1dKeepLength(Conv1d):
@@ -36,6 +38,19 @@ class Conv1dKeepLength(Conv1d):
         else:
             self.l_ac = Identity()
 
+    def forward(self, data):
+        # https://github.com/pytorch/pytorch/issues/1333
+        # permute to (batchsize=1, dim, length)
+        # add one dimension as (batchsize=1, dim, ADDED_DIM, length)
+        # pad to ADDED_DIM
+        # squeeze and return to (batchsize=1, dim, length+pad_length)
+        x = torch_nn_func.pad(data.permute(0, 2, 1).unsqueeze(2), \
+                              (self.pad_le, self.pad_ri,0,0), \
+                              mode = self.pad_mode).squeeze(2)
+        # tanh(conv1())
+        # permmute back to (batchsize=1, length, dim)
+        output = self.l_ac(super(Conv1dKeepLength, self).forward(x))
+        return output.permute(0, 2, 1)
 
 class TimeInvFIRFilter(Conv1dKeepLength):                                    
     """ Wrapper to define a FIR filter
@@ -90,3 +105,4 @@ class filter_fn:
         # batch = self.filter_layer(batch)
         return self.filter_layer(batch)
         #return batch.permute(0, 2, 1)
+'''

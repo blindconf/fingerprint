@@ -57,11 +57,11 @@ MULTI_CLASS= {
 }
 
 CLASSES = {
-    "binary-mp3": MULTI_CLASS,
-    "binary-mp3-2": MULTI_CLASS,
+    # "binary-mp3": MULTI_CLASS,
+    # "binary-mp3-2": MULTI_CLASS,
     "binary": MULTI_CLASS,
     "multiclass": MULTI_CLASS,
-    "multiclass-ae": MULTI_CLASS,
+    # "multiclass-ae": MULTI_CLASS,
 }
 """
 CSV_DIR_DEST = {
@@ -84,7 +84,6 @@ TARGET_SAMPLE_RATE = {
     "x-vector": 16000,
     "lcnn": 16000,
     "vfd-resnet": 24000,
-    # "fingerprint": 22050
 }
 
 '''

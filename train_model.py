@@ -24,7 +24,8 @@ from tqdm import tqdm
 from tabulate import tabulate
 from torch.utils.data import DataLoader
 from torch import Generator
-from src.datasets.utility import collate_fn, get_datasets, StratifiedSampler # , fingerprints_collate_fn
+from src.datasets.utility import collate_fn as nonfing_collate_fn
+from src.datasets.utility import get_datasets, StratifiedSampler, fingerprints_collate_fn
 from src.training.utility import get_model, get_optimizer_scheduler_loss_function, get_metric, save_confusion_matrix_to_excel, save_heatmap, set_seed
 from src.training.invariables import DEV, DEVICE_IDS, CLASSES, DATASETS
 from src.training.arguments import MODELS, CLASSIFICATION_TYPES, PERFORMANCE_METRICS
@@ -32,10 +33,11 @@ import re
 import torch.multiprocessing as mp
 import gc
 from src.training.loss_functions import init_loss_functions
-from src.datasets.filters import filter_fn
+# from src.datasets.filters import filter_fn
 from src.fingerprinting.fingerprinting import load_fingerprints, compute_mahalanobis_scores, assign_vocoders, WaveformToAvgSpec
 import torch.nn as nn
 
+from src.fingerprinting.filters import filter_fn
 
 @click.command()
 # Dataset selection: ljspeech, jsut, or asvspoof
@@ -60,7 +62,7 @@ import torch.nn as nn
 @click.option('--scale_factor', type=float, default=1.0, help='It compresses or dilates the given impulse response.') 
 @click.option('--epochs', type=int, default=10, help='Number of epochs.')
 @click.option('--num_workers_opt', type=int, default=4, help='how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process.')
-@click.option('--batchsize', type=int, default=24, help='Adjust batch size as needed.')
+@click.option('--batchsize', type=int, default=100, help='Adjust batch size as needed.')
 
 
 def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size, seed, model, classification_type, performance_metric, corruption_type, use_nn, scale_factor, epochs, num_workers_opt, batchsize):   # save_id
@@ -94,6 +96,9 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         x.append(float(y))
     coef = torch.tensor(x)
 
+    audio_filter = filter_fn(1, coef, filter_type)
+    transformation = WaveformToAvgSpec(window_size=window_size, hop_size=hop_size, sample_rate=sample_rate, device=DEV)
+
     if not os.path.exists(url_dir_to_save_model):
         os.makedirs(url_dir_to_save_model)
 
@@ -111,18 +116,23 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         hop_length=hop_len
         )
 
+    if model in ["fingerprint", "fingerprint_2"]:
+        collate_fn = fingerprints_collate_fn
+    else:
+        collate_fn = nonfing_collate_fn
+
     generator = Generator().manual_seed(seed)
     num_classes = len(CLASSES[classification_type][corpus]) # int(re.findall(pattern=r'\d+', string=classification_type)[0])
     # run vocoder_fingerprint_attribution.py if model == fingerprints and classification_type is multiclass
-    if model != "fingerprint" or (model == "fingerprint" and use_nn == 1):
+    if model != "fingerprint" or (model == "fingerprint" and use_nn == 1) or (model == "fingerprint_2" and use_nn == 1):
         # Get model
-        '''
+        # '''
         if model == "fingerprint_2" :
             my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes, input_size=nfft // 2 + 1)
         else:
             my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes)
-        '''
-        my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes)
+        # '''
+        # my_model = get_model(model=model, classification_type=classification_type, num_classes=num_classes)
         my_model = DataParallel(my_model, device_ids=DEVICE_IDS).to(DEV)
 
         # Get optimizer, scheduler and loss function
@@ -195,16 +205,33 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
 
                 for batch  in tqdm(train_loader, desc="Training batches"):
                     # Transfer to device
-                    waveforms, labels = batch
-                    inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                    if model in ["fingerprint", "fingerprint_2"]:
+                        waveforms, labels, wavs_len = batch
+                        waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                        filtered_audio = audio_filter.forward(waveforms)
+                        if model == "fingerprint":
+                            avg_ = transformation.forward_2(waveforms, wavs_len)
+                            filtered_avg_ = transformation.forward_2(filtered_audio, wavs_len)
+                        else:
+                            avg_ = transformation.forward(waveforms, wavs_len)
+                            filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+                        inputs = avg_ - filtered_avg_
+                        inputs = torch.nan_to_num(inputs, nan=0.0)
+                    else:
+                        waveforms, labels = batch
+                        inputs, labels = waveforms.to(DEV), labels.to(DEV)
+
                     if "binary" in classification_type:
                         labels = labels.float().unsqueeze(1)
                     else:
                         labels = labels -1
+                    # print(inputs.shape)
                     # Zero gradients
                     optimizer.zero_grad()
                     # Forward pass
+                    # print(inputs.shape)
                     outputs, features = my_model(inputs)
+                    # print(outputs)
                     loss = loss_function(outputs, features, labels)
                     # Backward pass and optimization
                     loss.backward()
@@ -235,14 +262,36 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 # LCNN: BatchNorm collapses in evaluation because its running mean and variance are inaccurate for small batches,
                 #  especially after channel-halving operations like MFM, causing outputs to shrink even with dropout disabled.
                 # Pending: Do some testing!!!
+                '''
                 if model not in ["lcnn"]:
                     my_model.eval()
+                '''
+                my_model.eval()
 
                 validating_loss = 0.0
                 with torch.no_grad():
                     for batch in tqdm(validation_loader, desc="Validation batches"):
-                        waveforms, labels = batch
-                        inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                        # waveforms, labels = batch
+                        # inputs, labels = waveforms.to(DEV), labels.to(DEV)
+
+                        if model in ["fingerprint", "fingerprint_2"]:
+                            waveforms, labels, wavs_len = batch
+                            waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                            filtered_audio = audio_filter.forward(waveforms)  
+
+                            if model == "fingerprint":
+                                avg_ = transformation.forward_2(waveforms, wavs_len)
+                                filtered_avg_ = transformation.forward_2(filtered_audio, wavs_len)
+                            else:
+                                avg_ = transformation.forward(waveforms, wavs_len)
+                                filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+
+                            inputs = avg_ - filtered_avg_ 
+                            inputs = torch.nan_to_num(inputs, nan=0.0)
+                        else:
+                            waveforms, labels = batch
+                            inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                            
                         if "binary" in classification_type:
                             labels = labels.float().unsqueeze(1)
                         else:
@@ -321,18 +370,39 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         checkpoint = torch.load(f'{url_dir_to_save_model}/best_model.pth',
                             map_location=lambda storage, loc: storage.cuda(0) if torch.cuda.is_available() else storage)
         my_model.load_state_dict(checkpoint)
-
+        '''
         if model not in ["lcnn"]:
             my_model.eval()
-        
+        '''
+        my_model.eval()
+
         # Reset Metrics
         accuracy.reset(), f1.reset(), precision.reset()
         recall.reset(), confusion_matrix.reset(), auroc.reset()
 
         with no_grad():
             for batch in tqdm(test_loader, desc="Testing batches"):
-                waveforms, labels = batch
-                inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                # waveforms, labels = batch
+                # inputs, labels = waveforms.to(DEV), labels.to(DEV)
+
+                if model in ["fingerprint", "fingerprint_2"]:
+                    waveforms, labels, wavs_len = batch
+                    waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                    filtered_audio = audio_filter.forward(waveforms)      
+
+                    if model == "fingerprint":
+                        avg_ = transformation.forward_2(waveforms, wavs_len)
+                        filtered_avg_ = transformation.forward_2(filtered_audio, wavs_len)
+                    else:
+                        avg_ = transformation.forward(waveforms, wavs_len)
+                        filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+
+                    inputs = avg_ - filtered_avg_ 
+                    inputs = torch.nan_to_num(inputs, nan=0.0)
+                else:
+                    waveforms, labels = batch
+                    inputs, labels = waveforms.to(DEV), labels.to(DEV)
+                    
                 if "binary" in classification_type:
                     labels = labels.float().unsqueeze(1)
                 else:
@@ -379,9 +449,8 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         print("Scores saved...")
     else:
         print(f'Initializing fingerprints scoring...')
-        FILTER = filter_fn(1, coef)
-        FILTER = FILTER.to(DEV)  # move to GPU or CPU as needed
-        AVG_SPEC =  WaveformToAvgSpec(n_fft=nfft, hop_length=hop_len, device=DEV).forward
+        # FILTER = filter_fn(1, coef)
+        # AVG_SPEC =  WaveformToAvgSpec(window_size=window_size, hop_size=hop_size, sample_rate=sample_rate, device=DEV).forward
         # construct command to run vocoder_fingerprint_attribution.py
         FINGERPRINT_DIR = f'{URL_DIR_TO_SAVE_MODELS_AND_LOGS}/{model}/{corpus}/{seed}/{filter_type}'
         # Load fingerprints
@@ -389,20 +458,25 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         all_preds = []
         all_labels = []
         print("Scoring initialized...")
-        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=False, generator=generator, collate_fn=fingerprints_collate_fn)
+        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=False, generator=generator, collate_fn=collate_fn) # fingerprints_collate_fn
         label_map_inv = {v: k for k, v in DATASETS[corpus].items()}
         print(DATASETS[corpus].items())
         print(label_map_inv)        
         for batch in tqdm(test_loader, desc="Processing test samples"):
-            waveforms, labels, original_lens = batch
+            waveforms, labels, wavs_len = batch
             waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+            filtered_audio = audio_filter.forward(waveforms)      
+            avg_ = transformation.forward(waveforms, wavs_len)
+            filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+            residuals = avg_ - filtered_avg_ 
+            '''
             if original_lens is None:
                 original_lens = [waveforms.shape[-1]]
             transformed_features = AVG_SPEC(waveforms, original_lens)
-            filtered_signals = FILTER.forward(waveforms)
+            filtered_signals = FILTER.forward(waveforms).to(DEV)
             transformed_filtered_features = AVG_SPEC(filtered_signals, original_lens)
             residuals = transformed_features - transformed_filtered_features
-    
+            '''
             if corruption_type == 1:
                 orig_labels = labels
                 # Random replacement
@@ -415,8 +489,12 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 scores = evasion_attack_scores(residuals, fingerprints, orig_labels, rand_labels, label_map_inv, DEV)
                 labels = rand_labels
             else:
+                # scores = compute_mahalanobis_scores(residuals, fingerprints, DEV)
                 scores = compute_mahalanobis_scores(residuals, fingerprints, DEV)
-            # print(scores)
+                # fingerprint = self.fingerprint
+                # score = mahalanobis_score(fingerprint, residual, self.invcov)
+
+                # print(scores)
             preds_tensor = assign_vocoders(scores)
             # print(preds_tensor)
             # print(labels , preds_tensor)
@@ -448,11 +526,13 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         f1_score = f1.compute().item()
         confusion_matrix_score = confusion_matrix.compute().cpu().numpy()        
         # Print metrics
+        
         print(f"Accuracy: {accuracy_score:.4f}")
         print(f"Precision: {precision_score:.4f}")
         print(f"Recall: {recall_score:.4f}")
         print(f"F1 Score: {f1_score:.4f}")
         print(f"Confusion Matrix:\n{confusion_matrix_score}")        
+        
         # Save metrics to Excel file
         metrics_data = {
             "Metric": ["Accuracy", "Precision", "Recall", "F1 Score"],

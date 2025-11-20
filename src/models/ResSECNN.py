@@ -1,8 +1,60 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+'''
+class ResSECNN(nn.Module):
+    """A standard convolutional neural network for spectrograms."""
+    def __init__(self, num_classes=7):
+        super().__init__()
 
+        self.features = nn.Sequential(
+            # Block 1
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2),  # ↓ by 2
 
+            # Block 2
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),  # ↓ by 2
+
+            # Block 3
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),  # ↓ by 2
+        )
+
+        # Adaptive Pooling lets you use variable-sized spectrograms
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128, num_classes)
+        )
+
+    def forward(self, x):
+        x = x.unsqueeze(1)  # [B, 1, Freq, Time]
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = self.classifier(x)
+        return x, None
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+
+'''
 class SE2D(nn.Module):
     """Squeeze-and-Excitation block for 2D feature maps."""
     def __init__(self, channels, reduction=16):
@@ -72,7 +124,7 @@ class ResSECNN(nn.Module):
 
     def forward(self, x):
         # x: [B, 1, Freq, Time]
-        x = x.unsqueeze(1)
+        # x = x.unsqueeze(1)
         x = self.layer1(x)
         x = self.se1(x)
         x = self.layer2(x)

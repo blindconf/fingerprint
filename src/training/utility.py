@@ -67,7 +67,7 @@ def get_model(model, classification_type, num_classes,input_size=None):
     elif (model == "fingerprint"):
         model = ResSECNN(num_classes=num_classes)
     elif (model == "fingerprint_2"):
-        model = ResSEMLP(input_size=input_size, num_classes=num_classes)
+        model = MLPClassifier(input_size=input_size, num_classes=num_classes)
     return model
 
 

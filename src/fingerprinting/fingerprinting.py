@@ -47,13 +47,73 @@ class WaveformToAvgSpec:
         """
         max_audio_len = batch.shape[2]
         num_samps = batch.shape[0]
+        # print("max_audio_len: ", max_audio_len)
+        # print("num_samps: ", num_samps)
+        # print(torch.tensor(original_audio_lengths).unsqueeze(1))
+        # print(torch.arange(max_audio_len).expand(num_samps, max_audio_len))
         mask = torch.arange(max_audio_len).expand(num_samps, max_audio_len) >= torch.tensor(original_audio_lengths).unsqueeze(1)
         # Mask padded audio with NaNs
+        # print("batch: ", batch)
         batch[mask.unsqueeze(1)] = float('nan')
         # Compute spectrogram
+        # print("batch: ", batch)
         spec = self.transf(batch)
         if self.to_db:
             spec = 10. * torch.log10(spec + 1e-10)
+        # Average over time dimension
+        return torch.nanmean(spec, dim=3)
+
+    def forward_2(self, batch: torch.Tensor, original_audio_lengths: list) -> torch.Tensor:
+        """
+        Compute the spectrogram for a batch of audio waveforms and average over time.
+        
+        Parameters:
+            batch (Tensor): Batch of audio waveforms (B x C x T).
+            original_audio_lengths (list): Original lengths of each audio sample in the batch.
+        
+        Returns:
+            Tensor: Averaged spectrogram for each sample in the batch (B x C x F).
+        """
+        max_audio_len = batch.shape[2]
+        num_samps = batch.shape[0]
+        # print("max_audio_len: ", max_audio_len)
+        # print("num_samps: ", num_samps)
+        # print(torch.tensor(original_audio_lengths).unsqueeze(1))
+        # print(torch.arange(max_audio_len).expand(num_samps, max_audio_len))
+        mask = torch.arange(max_audio_len).expand(num_samps, max_audio_len) >= torch.tensor(original_audio_lengths).unsqueeze(1)
+        # Mask padded audio with NaNs
+        # print("batch: ", batch)
+        batch[mask.unsqueeze(1)] = float('nan')
+        # Compute spectrogram
+        # print("batch: ", batch)
+        spec = self.transf(batch)
+
+        return spec
+
+    def forward_3(self, batch: torch.Tensor, original_audio_lengths: list) -> torch.Tensor:
+        """
+        Compute the spectrogram for a batch of audio waveforms and average over time.
+        
+        Parameters:
+            batch (Tensor): Batch of audio waveforms (B x C x T).
+            original_audio_lengths (list): Original lengths of each audio sample in the batch.
+        
+        Returns:
+            Tensor: Averaged spectrogram for each sample in the batch (B x C x F).
+        """
+        max_audio_len = batch.shape[2]
+        num_samps = batch.shape[0]
+        # print("max_audio_len: ", max_audio_len)
+        # print("num_samps: ", num_samps)
+        # print(torch.tensor(original_audio_lengths).unsqueeze(1))
+        # print(torch.arange(max_audio_len).expand(num_samps, max_audio_len))
+        mask = torch.arange(max_audio_len).expand(num_samps, max_audio_len) >= torch.tensor(original_audio_lengths).unsqueeze(1)
+        # Mask padded audio with NaNs
+        # print("batch: ", batch)
+        batch[mask.unsqueeze(1)] = float('nan')
+        # Compute spectrogram
+        # print("batch: ", batch)
+        spec = self.transf(batch)
         # Average over time dimension
         return torch.nanmean(spec, dim=3)
 
@@ -315,10 +375,13 @@ def correlation_score(fingerprint, input_residual):
 def mahalanobis_score(fingerprint, batch_residual, invcov):
     scores = []
     for i in range(batch_residual.shape[0]):
-        input_residual = batch_residual[i, :, :]
+        input_residual = batch_residual[i, :]
+        # print(input_residual.shape, fingerprint.shape)
         delta = input_residual.flatten() - fingerprint.flatten()   
+        # print(input_residual)
         score = torch.sqrt(torch.dot(delta, torch.matmul(invcov, delta)))
         scores.append(-1 * score.item())
+        # print("score: ", scores)
     return torch.tensor(scores)
 '''
 def mahalanobis_score(fingerprint, batch_residual, invcov, DEV):
@@ -433,12 +496,15 @@ def compute_mahalanobis_scores(residuals, fingerprints, DEV):
     batch_size = residuals.shape[0]
     scores = torch.zeros((batch_size, num_fingerprints), device=DEV)
     fingerprints_list = sorted(fingerprints.keys())
+    # print(fingerprints)
     for fingerprint_index, fingerprint_name in enumerate(fingerprints_list):
+        # print(fingerprint_name)
         for data in fingerprints[fingerprint_name]:
             fingerprint = data["fingerprint"]
             invcov = data["invcov"]
-            fingerprint_score = mahalanobis_score(fingerprint, residuals, invcov, DEV)         
+            fingerprint_score = mahalanobis_score(fingerprint, residuals, invcov)         
             scores[:, fingerprint_index] = fingerprint_score    
+    # print(scores)
     return scores
 
 def assign_vocoders(scores):  

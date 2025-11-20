@@ -36,8 +36,12 @@ class MLPClassifier(nn.Module):
     
     def forward(self, x):
         # print("x.shape 1", x.shape)
-        x = x.view(x.size(0), -1)
+        # x = x.view(x.size(0), -1)
+        # print(x.shape)
+        # x = x.mean(dim=(1, 3))
+        # print(x.shape)
         # x = x.mean(dim=2)
+        x = x.squeeze(1)
         x = F.relu(self.bn1(self.fc1(x)))
         #x = F.relu(self.fc1(x))
 
