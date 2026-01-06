@@ -25,7 +25,7 @@ from tabulate import tabulate
 from torch.utils.data import DataLoader
 from torch import Generator
 from src.datasets.utility import collate_fn as nonfing_collate_fn
-from src.datasets.utility import get_datasets, StratifiedSampler, fingerprints_collate_fn
+from src.datasets.utility import get_datasets, StratifiedSampler, fingerprints_collate_fn, SNR
 from src.training.utility import get_model, get_optimizer_scheduler_loss_function, get_metric, save_confusion_matrix_to_excel, save_heatmap, set_seed
 from src.training.invariables import DEV, DEVICE_IDS, CLASSES, DATASETS
 from src.training.arguments import MODELS, CLASSIFICATION_TYPES, PERFORMANCE_METRICS
@@ -34,10 +34,14 @@ import torch.multiprocessing as mp
 import gc
 from src.training.loss_functions import init_loss_functions
 # from src.datasets.filters import filter_fn
-from src.fingerprinting.fingerprinting import load_fingerprints, compute_mahalanobis_scores, assign_vocoders, WaveformToAvgSpec
+from src.fingerprinting.fingerprinting import load_fingerprints, compute_mahalanobis_scores, assign_vocoders, WaveformToAvgSpec, assign_score, evasion_attack_scores, pgd_attack, strong_pgd_attack
 import torch.nn as nn
-
+from scipy.stats import norm
 from src.fingerprinting.filters import filter_fn
+from sklearn.metrics import roc_curve, f1_score as f1_function
+import torchaudio
+import csv
+
 
 @click.command()
 # Dataset selection: ljspeech, jsut, or asvspoof
@@ -64,7 +68,7 @@ from src.fingerprinting.filters import filter_fn
 @click.option('--num_workers_opt', type=int, default=4, help='how many subprocesses to use for data loading. 0 means that the data will be loaded in the main process.')
 @click.option('--batchsize', type=int, default=100, help='Adjust batch size as needed.')
 
-
+        
 def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size, seed, model, classification_type, performance_metric, corruption_type, use_nn, scale_factor, epochs, num_workers_opt, batchsize):   # save_id
 
     set_seed(seed)
@@ -122,7 +126,39 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         collate_fn = nonfing_collate_fn
 
     generator = Generator().manual_seed(seed)
+
     num_classes = len(CLASSES[classification_type][corpus]) # int(re.findall(pattern=r'\d+', string=classification_type)[0])
+    # Set up Metrics
+    if "binary" in classification_type:
+        task = "binary"
+        accuracy = Accuracy(task=task).to(DEV)
+        f1 = F1Score(task=task).to(DEV)
+        precision = Precision(task=task).to(DEV)
+        recall = Recall(task=task).to(DEV)
+        confusion_matrix = ConfusionMatrix(task=task).to(DEV)
+        auroc = AUROC(task=task).to(DEV)
+        prob_func = torch.nn.functional.sigmoid
+        preds_func = lambda signals: (signals > 0.5).long()
+    else:
+        task = "multiclass"
+        accuracy = Accuracy(task=task, num_classes=num_classes).to(DEV)
+        f1 = F1Score(task=task, num_classes=num_classes, average="macro").to(DEV)
+        precision = Precision(task=task, num_classes=num_classes, average="macro").to(DEV)
+        recall = Recall(task=task, num_classes=num_classes, average="macro").to(DEV)
+        confusion_matrix = ConfusionMatrix(task=task, num_classes=num_classes).to(DEV)
+        auroc = AUROC(task=task, num_classes=num_classes, average="macro").to(DEV)
+        prob_func = lambda signals: torch.nn.functional.softmax(signals, dim=1)
+        preds_func = lambda signals: argmax(signals, dim=1)
+    
+    print(f'num_classes: {num_classes}')
+    
+    # --- DataLoader setup ---
+    sampler = None
+    shuffle = True
+
+    train_loader = DataLoader(train_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=collate_fn, shuffle=shuffle, sampler=sampler)
+    validation_loader = DataLoader(validate_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=collate_fn)
+
     # run vocoder_fingerprint_attribution.py if model == fingerprints and classification_type is multiclass
     if model != "fingerprint" or (model == "fingerprint" and use_nn == 1) or (model == "fingerprint_2" and use_nn == 1):
         # Get model
@@ -138,29 +174,6 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         # Get optimizer, scheduler and loss function
         optimizer, scheduler, loss_function = get_optimizer_scheduler_loss_function(model=model, my_model=my_model, classification_type=classification_type)
 
-        # Set up Metrics
-        if "binary" in classification_type:
-            task = "binary"
-            accuracy = Accuracy(task=task).to(DEV)
-            f1 = F1Score(task=task).to(DEV)
-            precision = Precision(task=task).to(DEV)
-            recall = Recall(task=task).to(DEV)
-            confusion_matrix = ConfusionMatrix(task=task).to(DEV)
-            auroc = AUROC(task=task).to(DEV)
-            prob_func = torch.nn.functional.sigmoid
-            preds_func = lambda signals: (signals > 0.5).long()
-        else:
-            print(f'num_classes: {num_classes}')
-            task = "multiclass"
-            accuracy = Accuracy(task=task, num_classes=num_classes).to(DEV)
-            f1 = F1Score(task=task, num_classes=num_classes, average="macro").to(DEV)
-            precision = Precision(task=task, num_classes=num_classes, average="macro").to(DEV)
-            recall = Recall(task=task, num_classes=num_classes, average="macro").to(DEV)
-            confusion_matrix = ConfusionMatrix(task=task, num_classes=num_classes).to(DEV)
-            auroc = AUROC(task=task, num_classes=num_classes, average="macro").to(DEV)
-            prob_func = lambda signals: torch.nn.functional.softmax(signals, dim=1)
-            preds_func = lambda signals: argmax(signals, dim=1)
-
         testing_score_df = pd.DataFrame(
             columns=["Testing_Accuracy", "Testing_F1_Score", "Testing_Precision", "Testing_Recall", "Testing_AUROC"]
         )
@@ -172,15 +185,10 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
             my_model.to(DEV)
             print("Best model found!", url_dir_to_save_model)
         '''
-        # --- DataLoader setup ---
-        sampler = None
-        shuffle = True
 
         if not os.path.exists(f'{url_dir_to_save_model}/best_model.pth'):
 
             print(f'Initializing {model} model training...')
-            train_loader = DataLoader(train_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=collate_fn, shuffle=shuffle, sampler=sampler)
-            validation_loader = DataLoader(validate_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=collate_fn)
 
             # Create performance dataframe for training/validating
             training_validating_score_df = pd.DataFrame(
@@ -206,12 +214,14 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 for batch  in tqdm(train_loader, desc="Training batches"):
                     # Transfer to device
                     if model in ["fingerprint", "fingerprint_2"]:
-                        waveforms, labels, wavs_len = batch
+                        waveforms, labels, wavs_len, path = batch
                         waveforms, labels = waveforms.to(DEV), labels.to(DEV)
                         filtered_audio = audio_filter.forward(waveforms)
-                        if model == "fingerprint":
-                            avg_ = transformation.forward_2(waveforms, wavs_len)
-                            filtered_avg_ = transformation.forward_2(filtered_audio, wavs_len)
+                        if model == "fingerprint":  
+                            avg_ = transformation.forward_4(waveforms, wavs_len)
+                            filtered_avg_ = transformation.forward_4(filtered_audio, wavs_len)
+                            # avg_ = transformation.forward_2(waveforms, wavs_len)
+                            # filtered_avg_ = transformation.forward_2(filtered_audio, wavs_len)
                         else:
                             avg_ = transformation.forward(waveforms, wavs_len)
                             filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
@@ -220,11 +230,12 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                     else:
                         waveforms, labels = batch
                         inputs, labels = waveforms.to(DEV), labels.to(DEV)
-
                     if "binary" in classification_type:
                         labels = labels.float().unsqueeze(1)
                     else:
                         labels = labels -1
+                    # print(labels)
+                    # print(afasfs)
                     # print(inputs.shape)
                     # Zero gradients
                     optimizer.zero_grad()
@@ -259,14 +270,12 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 accuracy.reset(), f1.reset(), precision.reset()
                 recall.reset(), confusion_matrix.reset(), auroc.reset()
                 
+                my_model.eval()
+
                 # LCNN: BatchNorm collapses in evaluation because its running mean and variance are inaccurate for small batches,
                 #  especially after channel-halving operations like MFM, causing outputs to shrink even with dropout disabled.
-                # Pending: Do some testing!!!
-                '''
-                if model not in ["lcnn"]:
-                    my_model.eval()
-                '''
-                my_model.eval()
+                if model == "lcnn":
+                    my_model.apply(set_bn_to_train)
 
                 validating_loss = 0.0
                 with torch.no_grad():
@@ -275,13 +284,13 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                         # inputs, labels = waveforms.to(DEV), labels.to(DEV)
 
                         if model in ["fingerprint", "fingerprint_2"]:
-                            waveforms, labels, wavs_len = batch
+                            waveforms, labels, wavs_len, path = batch
                             waveforms, labels = waveforms.to(DEV), labels.to(DEV)
                             filtered_audio = audio_filter.forward(waveforms)  
 
                             if model == "fingerprint":
-                                avg_ = transformation.forward_2(waveforms, wavs_len)
-                                filtered_avg_ = transformation.forward_2(filtered_audio, wavs_len)
+                                avg_ = transformation.forward_4(waveforms, wavs_len)
+                                filtered_avg_ = transformation.forward_4(filtered_audio, wavs_len)
                             else:
                                 avg_ = transformation.forward(waveforms, wavs_len)
                                 filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
@@ -363,18 +372,18 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
 
         # === Test Phase ===
         print("\nTesting the best model...")
-        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=True, generator=generator, collate_fn=collate_fn)
+        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=False, pin_memory=True, generator=generator, collate_fn=collate_fn)
         # for i in tqdm(test_ds, desc="Testing batches"):
         #  continue
         # my_model.load_state_dict(torch.load(f'{url_dir_to_save_model}/best_model.pth'))
         checkpoint = torch.load(f'{url_dir_to_save_model}/best_model.pth',
                             map_location=lambda storage, loc: storage.cuda(0) if torch.cuda.is_available() else storage)
         my_model.load_state_dict(checkpoint)
-        '''
-        if model not in ["lcnn"]:
-            my_model.eval()
-        '''
+       
         my_model.eval()
+        
+        if model == "lcnn":
+            my_model.apply(set_bn_to_train)
 
         # Reset Metrics
         accuracy.reset(), f1.reset(), precision.reset()
@@ -386,13 +395,13 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 # inputs, labels = waveforms.to(DEV), labels.to(DEV)
 
                 if model in ["fingerprint", "fingerprint_2"]:
-                    waveforms, labels, wavs_len = batch
+                    waveforms, labels, wavs_len, path = batch
                     waveforms, labels = waveforms.to(DEV), labels.to(DEV)
                     filtered_audio = audio_filter.forward(waveforms)      
 
                     if model == "fingerprint":
-                        avg_ = transformation.forward_2(waveforms, wavs_len)
-                        filtered_avg_ = transformation.forward_2(filtered_audio, wavs_len)
+                        avg_ = transformation.forward_4(waveforms, wavs_len)
+                        filtered_avg_ = transformation.forward_4(filtered_audio, wavs_len)
                     else:
                         avg_ = transformation.forward(waveforms, wavs_len)
                         filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
@@ -458,14 +467,114 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         all_preds = []
         all_labels = []
         print("Scoring initialized...")
-        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=True, pin_memory=False, generator=generator, collate_fn=collate_fn) # fingerprints_collate_fn
+        test_loader = DataLoader(test_ds, batch_size=batchsize, num_workers=num_workers_opt, persistent_workers=False, pin_memory=False, generator=generator, collate_fn=collate_fn) # fingerprints_collate_fn
         label_map_inv = {v: k for k, v in DATASETS[corpus].items()}
         print(DATASETS[corpus].items())
-        print(label_map_inv)        
+        print(label_map_inv)
+        
+        output_dir = f'{url_dir_to_save_model}/nn_{use_nn}'
+        os.makedirs(output_dir, exist_ok=True)    
+        snr_values = []
+        if classification_type == 'binary':
+            if os.path.exists(f"{output_dir}/evaluation_binary_gaussian.csv"):
+                df = pd.read_csv(f"{output_dir}/evaluation_binary_gaussian.csv")
+                
+                # Extract values
+                mean = df["mean"].iloc[0]
+                std = df["std"].iloc[0]
+                best_f1 = df["best_f1"].iloc[0]
+                best_thresh = df["best_threshold"].iloc[0]
+
+                data_gaussian = {
+                    "mean": [mean],
+                    "std": [std],
+                    "best_f1": [best_f1],
+                    "best_threshold": [best_thresh]
+                }
+            else:
+                train_preds = []
+                for batch in tqdm(train_loader, desc="Processing train samples"):
+                    waveforms, labels, wavs_len, path = batch
+                    waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                    # print(labels)
+                    waveforms = waveforms[labels == 1]
+                    # Convert lengths to tensor
+                    lengths_tensor = torch.tensor(wavs_len, device=DEV)
+                    # Apply the same mask as for wavs
+                    lengths_1 = lengths_tensor[labels == 1]
+                    # Optionally back to list
+                    wavs_len = lengths_1.tolist()
+
+                    filtered_audio = audio_filter.forward(waveforms) 
+                    # print(filtered_audio)     
+                    avg_ = transformation.forward(waveforms, wavs_len)
+                    # print(avg_)
+                    filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+                    # print(filtered_avg_)
+                    residuals = avg_ - filtered_avg_ 
+                    scores = compute_mahalanobis_scores(residuals, fingerprints, DEV)
+                    train_tensor = assign_score(scores)
+                    train_preds.append(train_tensor)
+                train_preds = torch.cat(train_preds, dim=0)
+                # print(train_preds)
+                mean, std = norm.fit(train_preds.cpu())
+
+                val_preds  = []
+                val_labels = []
+                for batch in tqdm(validation_loader, desc="Processing validation samples"):
+                    waveforms, labels, wavs_len, path = batch
+                    waveforms, labels = waveforms.to(DEV), labels.to(DEV)
+                    
+                    filtered_audio = audio_filter.forward(waveforms) 
+                    # print(filtered_audio)     
+                    avg_ = transformation.forward(waveforms, wavs_len)
+                    # print(avg_)
+                    filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+                    # print(filtered_avg_)
+                    residuals = avg_ - filtered_avg_ 
+                    scores = compute_mahalanobis_scores(residuals, fingerprints, DEV)
+                    train_tensor = assign_score(scores)
+                    val_preds.append(train_tensor)
+                    val_labels.append(labels)
+
+                val_preds = torch.cat(val_preds, dim=0)
+                val_labels = torch.cat(val_labels, dim=0)
+                thres_fitted_norm = norm.pdf(val_preds.cpu(), loc=mean, scale=std + 1e-08)
+                # print(val_preds)
+                # print(thres_fitted_norm)
+                
+                fpr, tpr, thresholds = roc_curve(val_labels.cpu(), thres_fitted_norm, drop_intermediate=False)
+
+                best_f1 = 0
+                best_thresh = 0
+
+                for thresh in thresholds:
+                    preds = (thres_fitted_norm >= thresh).astype(int)
+                    f1 = f1_function(val_labels.cpu(), preds)
+                    if f1 > best_f1:
+                        best_f1 = f1
+                        best_thresh = thresh
+
+                print("Best F1:", best_f1)
+                print("Threshold that maximizes F1:", best_thresh)
+                # Create a dictionary for a single row
+                data_gaussian = {
+                    "mean": [mean],
+                    "std": [std],
+                    "best_f1": [best_f1],
+                    "best_threshold": [best_thresh]
+                }
+
+                # Convert to DataFrame
+                df = pd.DataFrame(data_gaussian)
+
+                # Save to CSV
+                df.to_csv(f"{output_dir}/evaluation_binary_gaussian.csv", index=False)
+            
         for batch in tqdm(test_loader, desc="Processing test samples"):
-            waveforms, labels, wavs_len = batch
+            waveforms, labels, wavs_len, path = batch
             waveforms, labels = waveforms.to(DEV), labels.to(DEV)
-            filtered_audio = audio_filter.forward(waveforms)      
+            filtered_audio = audio_filter.forward(waveforms) 
             avg_ = transformation.forward(waveforms, wavs_len)
             filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
             residuals = avg_ - filtered_avg_ 
@@ -481,38 +590,158 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
                 orig_labels = labels
                 # Random replacement
                 rand_labels = torch.randint(1, num_classes + 1, labels.size(), device=labels.device)
+                # print("orig_labels: ", orig_labels)
                 # Make sure replacement is not the same as original
                 mask = rand_labels == labels
                 while mask.any():
                     rand_labels[mask] = torch.randint(1, num_classes + 1, (mask.sum().item(),), device=labels.device)
                     mask = rand_labels == labels
+                # print("rand_labels: ", rand_labels)
                 scores = evasion_attack_scores(residuals, fingerprints, orig_labels, rand_labels, label_map_inv, DEV)
                 labels = rand_labels
+            elif corruption_type == 2:
+                # --- Adaptive PGD attack ---
+                # Choose random target model (≠ original)
+                target_labels = torch.randint(1, num_classes + 1, labels.size(), device=labels.device)
+                mask = target_labels == labels
+                while mask.any():
+                    target_labels[mask] = torch.randint(1, num_classes + 1, (mask.sum().item(),), device=labels.device)
+                    mask = target_labels == labels
+                
+                filtered_audio = audio_filter.forward(waveforms)
+                avg_ = transformation.forward(waveforms, wavs_len)
+                filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+                residuals = avg_ - filtered_avg_
+                scores_src = compute_mahalanobis_scores(residuals, fingerprints, DEV)
+
+                # Use stronger attack
+                waveforms_adv = strong_pgd_attack(
+                    waveforms=waveforms,
+                    labels=labels,
+                    fingerprints=fingerprints,
+                    transformation=transformation,
+                    audio_filter=audio_filter,
+                    wavs_len=wavs_len,
+                    label_map_inv=label_map_inv,
+                    epsilon=0.002,
+                    alpha=0.0008,
+                    steps=1000, # 200
+                    targeted=True,
+                    target_labels=target_labels,
+                    device=DEV,
+                    use_momentum=True,
+                    momentum_decay=0.9,
+                    l2_reg=1e-6,
+                    path=path[0],
+                    scale_factor=scale_factor
+                )
+                snr_values.append(SNR(waveforms, waveforms_adv))
+                filtered_audio = audio_filter.forward(waveforms_adv)
+                avg_ = transformation.forward(waveforms_adv, wavs_len)
+                filtered_avg_ = transformation.forward(filtered_audio, wavs_len)
+                residuals = avg_ - filtered_avg_
+                scores = compute_mahalanobis_scores(residuals, fingerprints, DEV)
+                # print(scores)
+                # preds_tensor = assign_vocoders(scores)
+                # print(preds_tensor)
+                # print(waveforms_adv[0].shape)
+                # extract actual string
+                # extract filename
+                filename = os.path.basename(path[0])
+                output_dir_audio = os.path.join("adapt_attack",corpus, str(scale_factor), str(labels[0].item()))
+                os.makedirs(output_dir_audio, exist_ok=True)
+                torchaudio.save(os.path.join(output_dir_audio, filename), waveforms_adv[0].detach().cpu().contiguous(), sample_rate)
+                
+                preds_tensor = assign_vocoders(scores)
+                if preds_tensor != target_labels -1:
+                    csv_path = os.path.join("adapt_attack",corpus, str(scale_factor))
+                    # Create CSV with header if it doesn't exist
+                    with open(f"{csv_path}/failed_files.csv", "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(path)   # header
+                    print(path, preds_tensor)
+                '''
+                if path[0] == "/data/DATASETS/ASV_Spoof_2019_LA/ASVspoof2019_LA_dev/flac/LA_D_8169706.flac":
+                    print(path, preds_tensor)
+                    print("label_tgt", target_labels)
+                    print("tgts", scores)
+                    print("label_src", labels)
+                    print("srcs: ", scores_src)
+                    print(agddgd)
+                '''
+                labels = target_labels
             else:
                 # scores = compute_mahalanobis_scores(residuals, fingerprints, DEV)
                 scores = compute_mahalanobis_scores(residuals, fingerprints, DEV)
+                # print(scores)
                 # fingerprint = self.fingerprint
                 # score = mahalanobis_score(fingerprint, residual, self.invcov)
-
                 # print(scores)
-            preds_tensor = assign_vocoders(scores)
+            if classification_type == 'binary':
+                preds_tensor = assign_score(scores)
+            else:
+                preds_tensor = assign_vocoders(scores)
+            # print(scores)
+            # print(preds_tensor, labels)
             # print(preds_tensor)
             # print(labels , preds_tensor)
             all_preds.append(preds_tensor)
             all_labels.append(labels)
+        
+        if corruption_type == 2:
+            avg_SNR = sum(snr_values) / len(snr_values)
+            csv_path = os.path.join("adapt_attack",corpus, str(scale_factor))
+            print("Avg SNR: ", avg_SNR)
 
-        print("Scoring finished.")
+            with open(f"{csv_path}/failed_files.csv", "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([avg_SNR])   # header
+                
+
+        # print("Scoring finished.")
         # Convert predictions and labels to tensors
         preds_tensor = torch.cat(all_preds, dim=0)
         labels_tensor = torch.cat(all_labels, dim=0)
+        # print(preds_tensor)
+        # print(labels_tensor)
+        if classification_type == 'binary':
+            fitted_norm = norm.pdf(preds_tensor.cpu(), loc=data_gaussian["mean"][0], scale=data_gaussian["std"][0] + 1e-08)
+            '''
+            # Create AUROC metric object
+            auroc_metric = AUROC(task=task)
+            # Compute AUROC
+            auroc_score = auroc_metric(preds_tensor, labels_tensor)
+            # auc = roc_auc_score(labels, outputs[label] + outputs[key_dict])
+            print("auroc_score", auroc_score)
+            # '''
+            preds_tensor = (fitted_norm >= data_gaussian["best_threshold"][0])
+            # print(preds_tensor)
+            preds_tensor = torch.tensor(preds_tensor, dtype=torch.float).to(DEV) # preds_tensor.astype(float)
+            # print(preds_tensor)
+            '''
+            TP, FP, TN, FN = perf_measure(y_actual, y_hat)
 
-        accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(DEV)
-        f1 = F1Score(task="multiclass", num_classes=num_classes, average="macro").to(DEV)
-        precision = Precision(task="multiclass", num_classes=num_classes, average="macro").to(DEV)
-        recall = Recall(task="multiclass", num_classes=num_classes, average="macro").to(DEV)
-        confusion_matrix = ConfusionMatrix(task="multiclass", num_classes=num_classes).to(DEV)
-        # Shift labels to start from 0
-        labels_tensor = labels_tensor - 1
+            TPR = TP / (TP + FN)
+            FPR = FP / (TN + FP)
+            acc = (y_hat == y_actual) 
+            precision = TP / (TP + FP)
+            Recall = TP / (TP + FN)
+            F1 = TP / (TP + (FN + FP)/2)
+            return np.mean(acc), TP, FP, TN, FN, FPR, TPR, precision, Recall, F1
+            # '''
+            accuracy = Accuracy(task="binary", num_classes=num_classes).to(DEV)
+            f1 = F1Score(task="binary", num_classes=num_classes, average="macro").to(DEV)
+            precision = Precision(task="binary", num_classes=num_classes, average="macro").to(DEV)
+            recall = Recall(task="binary", num_classes=num_classes, average="macro").to(DEV)
+            confusion_matrix = ConfusionMatrix(task="binary", num_classes=num_classes).to(DEV)
+        else:
+            accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(DEV)
+            f1 = F1Score(task="multiclass", num_classes=num_classes, average="macro").to(DEV)
+            precision = Precision(task="multiclass", num_classes=num_classes, average="macro").to(DEV)
+            recall = Recall(task="multiclass", num_classes=num_classes, average="macro").to(DEV)
+            confusion_matrix = ConfusionMatrix(task="multiclass", num_classes=num_classes).to(DEV)
+            # Shift labels to start from 0
+            labels_tensor = labels_tensor - 1
         # Update metrics with final tensors
         accuracy.update(preds_tensor, labels_tensor)
         precision.update(preds_tensor, labels_tensor)
@@ -526,31 +755,38 @@ def main(corpus, filter_type, filter_param, scorefunction, window_size, hop_size
         f1_score = f1.compute().item()
         confusion_matrix_score = confusion_matrix.compute().cpu().numpy()        
         # Print metrics
-        
+        # '''
         print(f"Accuracy: {accuracy_score:.4f}")
         print(f"Precision: {precision_score:.4f}")
         print(f"Recall: {recall_score:.4f}")
         print(f"F1 Score: {f1_score:.4f}")
         print(f"Confusion Matrix:\n{confusion_matrix_score}")        
-        
+        # '''
+        # '''
         # Save metrics to Excel file
         metrics_data = {
             "Metric": ["Accuracy", "Precision", "Recall", "F1 Score"],
             "Score": [accuracy_score, precision_score, recall_score, f1_score]
         }
         metrics_df = pd.DataFrame(metrics_data)
-        output_dir = f'{url_dir_to_save_model}/nn_{use_nn}'
-        os.makedirs(output_dir, exist_ok=True)        
         # Save confusion matrix to Excel file
         confusion_matrix_df = pd.DataFrame(confusion_matrix_score)
         if corruption_type == 1:
             confusion_matrix_df.to_excel(f'{output_dir}/evasion_confusion_matrix_{corruption_type}_factor{scale_factor}.xlsx', index=True)  
             metrics_df.to_excel(f'{output_dir}/evasion_testing_scores_{corruption_type}_factor{scale_factor}.xlsx', index=False)
+        elif corruption_type == 2:
+            confusion_matrix_df.to_excel(f'{output_dir}/adapt_attack_confusion_matrix_{corruption_type}_factor{scale_factor}.xlsx', index=True)  
+            metrics_df.to_excel(f'{output_dir}/adapt_attack_testing_scores_{corruption_type}_factor{scale_factor}.xlsx', index=False)
         else:
             confusion_matrix_df.to_excel(f'{output_dir}/confusion_matrix_{corruption_type}_factor{scale_factor}.xlsx', index=True)      
             metrics_df.to_excel(f'{output_dir}/testing_scores_{corruption_type}_factor{scale_factor}.xlsx', index=False)
         save_heatmap(confusion_matrix_df.to_numpy(), output_dir, classification_type, corruption_type, scale_factor, corpus)
         print(f'Metrics and confusion matrix saved in {output_dir}.')
-    
+        # '''
+
+def set_bn_to_train(m):
+    if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+        m.train()
+        
 if __name__ == "__main__":
     main()

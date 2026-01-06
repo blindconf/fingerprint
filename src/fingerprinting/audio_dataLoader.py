@@ -36,6 +36,9 @@ class AudioDataSet(Dataset):
         """
         audio_sample_path = self._get_audio_sample_path(index)
         signal, sr = torchaudio.load(audio_sample_path)
+        # print(signal)
+        # print(sr, self.target_sample_rate)
+        # from torchaudio import load
         signal = signal.to(self.device)
         signal = self._resample_if_necessary(signal, sr)
         # signal = self._mix_down_if_necessary(signal)

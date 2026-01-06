@@ -7,7 +7,7 @@ from src.datasets.utility_2 import pad_and_concatenate
 import os
 import glob
 import pickle
-
+from src.training.invariables import DEV
 
 class WaveformToAvgSpec:
     """
@@ -116,6 +116,52 @@ class WaveformToAvgSpec:
         spec = self.transf(batch)
         # Average over time dimension
         return torch.nanmean(spec, dim=3)
+
+    def forward_4(self, batch: torch.Tensor, original_audio_lengths: list) -> torch.Tensor:
+        """
+        Compute the spectrogram for a batch of audio waveforms and average over time.
+        
+        Parameters:
+            batch (Tensor): Batch of audio waveforms (B x C x T).
+            original_audio_lengths (list): Original lengths of each audio sample in the batch.
+        
+        Returns:
+            Tensor: Averaged spectrogram for each sample in the batch (B x C x F).
+        """
+        max_audio_len = batch.shape[2]
+        num_samps = batch.shape[0]
+        # print("max_audio_len: ", max_audio_len)
+        # print("num_samps: ", num_samps)
+        # print(torch.tensor(original_audio_lengths).unsqueeze(1))
+        # print(torch.arange(max_audio_len).expand(num_samps, max_audio_len))
+        mask = torch.arange(max_audio_len).expand(num_samps, max_audio_len) >= torch.tensor(original_audio_lengths).unsqueeze(1)
+        # Mask padded audio with NaNs
+        # print("batch: ", batch)
+        batch[mask.unsqueeze(1)] = float('nan')
+        # Compute spectrogram
+        # print("batch: ", batch)
+        spec = self.transf(batch)
+        if self.to_db:
+            spec = 10. * torch.log10(spec + 1e-10)
+        return spec
+
+    def forward_5(self, batch: torch.Tensor, original_audio_lengths: list) -> torch.Tensor:
+        """
+        Compute the spectrogram for a batch of audio waveforms and average over time.
+        
+        Parameters:
+            batch (Tensor): Batch of audio waveforms (B x C x T).
+            original_audio_lengths (list): Original lengths of each audio sample in the batch.
+        
+        Returns:
+            Tensor: Averaged spectrogram for each sample in the batch (B x C x F).
+        """
+        # Compute spectrogram
+        spec = self.transf(batch)
+        if self.to_db:
+            spec = 10. * torch.log10(spec + 1e-10)
+        # Average over time dimension
+        return torch.mean(spec, dim=3)
 
 class FingerprintingWrapper:
     """
@@ -279,14 +325,18 @@ class FingerprintingWrapper:
                 audio = i[0]
                 original_audio_lengths = i[1]
                 batch_sample_rate = i[2][0]
-                path = i[3]                
+                path = i[3] 
+                # print(path)
+                # print(audio)
                 if self.filter.name == "EncodecFilter":
                     filtered_audio = self.filter.forward(audio, batch_sample_rate)
                 else:
                     filtered_audio = self.filter.forward(audio)            
-                
+                # print(filtered_audio)
                 avg_ = self.transformation.forward(audio, original_audio_lengths)
+                # print(avg_)
                 filtered_avg_ = self.transformation.forward(filtered_audio, original_audio_lengths)
+                # print(filtered_avg_)
                 residual = avg_ - filtered_avg_ 
                 if self.filter_trend_correction:
                     residual = residual - self.trend
@@ -383,6 +433,20 @@ def mahalanobis_score(fingerprint, batch_residual, invcov):
         scores.append(-1 * score.item())
         # print("score: ", scores)
     return torch.tensor(scores)
+
+def mahalanobis_distance_differentiable(residuals, fingerprint, invcov):
+    # residuals: B × d
+    # fingerprint: d
+    # invcov: d × d
+    for i in range(residuals.shape[0]):
+        input_residual = residuals[i, :]
+        # print(input_residual.shape, fingerprint.shape)
+        delta = input_residual.flatten() - fingerprint.flatten()   
+        # print(input_residual)
+        score = torch.sqrt(torch.dot(delta, torch.matmul(invcov, delta)))
+        
+    return -1 * score   # differentiable
+
 '''
 def mahalanobis_score(fingerprint, batch_residual, invcov, DEV):
     batch_size = batch_residual.shape[0]
@@ -502,7 +566,14 @@ def compute_mahalanobis_scores(residuals, fingerprints, DEV):
         for data in fingerprints[fingerprint_name]:
             fingerprint = data["fingerprint"]
             invcov = data["invcov"]
-            fingerprint_score = mahalanobis_score(fingerprint, residuals, invcov)         
+
+            fingerprint_score = mahalanobis_score(fingerprint, residuals, invcov)    
+            '''
+            if fingerprint_name == 'C5':
+                print(fingerprint)
+                print(invcov)
+                print(fingerprint_name, fingerprint_score)     
+            '''
             scores[:, fingerprint_index] = fingerprint_score    
     # print(scores)
     return scores
@@ -513,3 +584,229 @@ def assign_vocoders(scores):
     # Convert predictions and labels to tensors
     preds_tensor = best_vocoder_indices.float()
     return preds_tensor
+
+def assign_score(scores):
+    # Get the max score for each sample
+    max_scores, _ = torch.max(scores, dim=1)  # _ is the index which we ignore
+    return max_scores
+
+def pgd_attack(
+    waveforms,
+    labels,
+    fingerprints,
+    transformation,
+    audio_filter,
+    wavs_len,
+    label_map_inv,
+    epsilon=0.001,
+    alpha=0.0002,
+    steps=30,
+    targeted=False,
+    target_labels=None
+):
+    waveforms_adv = waveforms.clone().detach()
+    waveforms_adv.requires_grad_(True)
+
+    # Pre-build mapping from system name → (fp, invcov)
+    sys_to_fp = {}
+    for sys_name, entries in fingerprints.items():
+        fp = entries[0]["fingerprint"].to(DEV)
+        invcov = entries[0]["invcov"].to(DEV)
+        sys_to_fp[sys_name] = (fp, invcov)
+
+    src_sys = label_map_inv[labels.item()]
+    tgt_sys = label_map_inv[target_labels.item()]
+
+    mu_src, invcov_mu = sys_to_fp[src_sys]
+    mu_tgt, invcov_tgt = sys_to_fp[tgt_sys]
+
+    for _ in range(steps):
+        # Compute residuals
+        filtered = audio_filter.forward(waveforms_adv)
+        avg = transformation.forward_5(waveforms_adv, wavs_len)
+        avg_filt = transformation.forward_5(filtered, wavs_len)
+        residuals = avg - avg_filt
+
+        if targeted:
+            loss = mahalanobis_distance_differentiable(residuals, mu_tgt, invcov_tgt)
+        else:
+            loss = mahalanobis_distance_differentiable(residuals, mu_src, invcov_mu)
+
+        # print(residuals)
+        loss_2 = mahalanobis_score(mu_src, residuals, invcov_mu)
+        loss_3 = mahalanobis_distance_differentiable(residuals, mu_src, invcov_mu)
+        print(loss)# , loss_2, loss_3)
+        loss.backward()
+
+        waveforms_adv = waveforms_adv + alpha * waveforms_adv.grad.sign()
+        '''
+        # PGD step
+        if targeted:
+            waveforms_adv = waveforms_adv - alpha * waveforms_adv.grad.sign()
+        else:
+            waveforms_adv = waveforms_adv + alpha * waveforms_adv.grad.sign()
+        '''
+        # Projection
+        perturb = torch.clamp(waveforms_adv - waveforms, min=-epsilon, max=epsilon)
+        waveforms_adv = (waveforms + perturb).detach().requires_grad_(True)
+    print(dsfs)
+    return waveforms_adv.detach()
+
+def mahalanobis_distance_batch(residuals, fingerprint, invcov):
+    """
+    residuals: B x d
+    fingerprint: d or B x d
+    invcov: d x d or B x d x d
+    returns: B tensor of Mahalanobis distances (no .item(), fully differentiable)
+    """
+    if fingerprint.dim() == 1:
+        fingerprint = fingerprint.unsqueeze(0).expand(residuals.size(0), -1)  # B x d
+    delta = residuals - fingerprint.to(residuals.device)                     # B x d
+
+    # Case invcov is single matrix
+    if invcov.dim() == 2:
+        left = torch.matmul(delta, invcov.to(residuals.device))             # B x d
+        dist2 = (left * delta).sum(dim=1)                                   # B
+    else:
+        # per-sample invcov: B x d x d
+        left = torch.matmul(invcov.to(residuals.device), delta.unsqueeze(-1)).squeeze(-1)  # B x d
+        dist2 = (left * delta).sum(dim=1)                                   # B
+
+    dist = torch.sqrt(dist2 + 1e-8)   # B
+    return dist
+
+def strong_pgd_attack(
+    waveforms,
+    labels,
+    fingerprints,
+    transformation,
+    audio_filter,
+    wavs_len,
+    label_map_inv,
+    epsilon=0.001,        # max perturbation L_inf
+    alpha=0.0005,         # step size per iter
+    steps=200,            # more steps for stronger attack
+    targeted=True,
+    target_labels=None,
+    device="cuda",
+    use_momentum=True,    # MI-FGSM style
+    momentum_decay=0.9,
+    l2_reg=1e-6,          # small L2 on delta to stabilize
+    per_sample_invcov=False,  # whether fingerprint entries contain invcov per system
+    path=None,
+    scale_factor=1
+):
+    """
+    Strong adaptive attack that minimizes Mahalanobis distance to target fingerprint.
+    Works for batch size >=1, but intended for small batches (your pipeline).
+    """
+
+    # Pre-build mapping from system name → (fp, invcov)
+    sys_to_fp = {}
+    for sys_name, entries in fingerprints.items():
+        fp = entries[0]["fingerprint"].to(DEV)
+        invcov = entries[0]["invcov"].to(DEV)
+        sys_to_fp[sys_name] = (fp, invcov)
+
+    src_sys = label_map_inv[labels.item()]
+    tgt_sys = label_map_inv[target_labels.item()]
+
+    mu_src, invcov_mu = sys_to_fp[src_sys]
+    mu_tgt, invcov_tgt = sys_to_fp[tgt_sys]
+
+    # initialize delta (perturbation) and momentum buffer
+    delta = torch.zeros_like(waveforms, device=DEV, requires_grad=True)  # B x C x T
+    if use_momentum:
+        g_m = torch.zeros_like(delta, device=DEV)
+
+    # print(delta, delta.shape)
+    # print(g_m, g_m.shape)
+    # print(delta.grad)
+    # Precompute filtered of the clean waveform? (no, filter depends on waveforms+delta)
+    # Loop
+    batch_size = waveforms.shape[0]
+    
+    # forward through filter + transform (use forward_5 to avoid NaN masking)
+    filtered = audio_filter.forward(waveforms)   # ensure this is differentiable
+    avg = transformation.forward_5(waveforms, wavs_len)      # B x C x F or B x F (depending)
+    avg_filt = transformation.forward_5(filtered, wavs_len)
+    residuals = (avg - avg_filt).view(batch_size, -1)
+    tgt_scrore = -mahalanobis_score(mu_src, residuals, invcov_mu).to(DEV)
+    # print("Target distance: ", tgt_scrore)
+    
+    for step in range(steps):
+        # Ensure grad from previous iter cleared
+        if delta.grad is not None:
+            delta.grad.zero_()
+
+        # waveform with perturbation
+        wave_adv = (waveforms + delta).clamp(-1.0, 1.0)   # clip to audio range if desired
+
+        # forward through filter + transform (use forward_5 to avoid NaN masking)
+        filtered = audio_filter.forward(wave_adv)   # ensure this is differentiable
+        avg = transformation.forward_5(wave_adv, wavs_len)      # B x C x F or B x F (depending)
+        avg_filt = transformation.forward_5(filtered, wavs_len)
+
+        # compute residuals: ensure final shape B x d
+        # print((avg - avg_filt).shape)
+        residuals = (avg - avg_filt).view(batch_size, -1)   # B x d
+        # print(residuals.shape)
+
+        # Mahalanobis distance to target fingerprint (we minimize it for targeted attack)
+        dist_tgt = mahalanobis_distance_batch(residuals, mu_tgt, invcov_tgt)  # B
+        # print(dist_tgt)
+        # For untargeted objective we want to maximize distance to src -> minimize -dist_src
+        dist_src = mahalanobis_distance_batch(residuals, mu_src, invcov_mu)  # B
+        # print(dist_tgt)
+        loss_1 = 0.5 * (dist_tgt - tgt_scrore)**2
+        if scale_factor == 1:
+            loss = loss_1 + l2_reg * (delta.view(batch_size, -1).norm(p=2, dim=1).mean())
+        else:         
+            loss_2 = -dist_src 
+            loss_val = 0.9 * loss_1 + 0.1 * loss_2
+            loss = loss_val + l2_reg * (delta.view(batch_size, -1).norm(p=2, dim=1).mean())
+        '''
+        if targeted:
+            loss = dist_tgt.mean() + l2_reg * (delta.view(batch_size, -1).norm(p=2, dim=1).mean())
+            print("loss: ", loss, dist_tgt, dist_src)
+        else:
+            loss = (-dist_src).mean() + l2_reg * (delta.view(batch_size, -1).norm(p=2, dim=1).mean())
+        '''
+        '''
+        if path == "/data/DATASETS/ASV_Spoof_2019_LA/ASVspoof2019_LA_dev/flac/LA_D_8169706.flac":
+            print(loss_val, dist_tgt, dist_src, tgt_scrore)
+        '''
+        # Backprop to delta through entire pipeline
+        loss.backward()
+
+        # gradient step on delta: use sign or normalized gradient; optionally momentum
+        grad = delta.grad.detach()
+        # print(grad)
+        if use_momentum:
+            g_m = momentum_decay * g_m + grad / (torch.norm(grad.view(batch_size, -1), p=1, dim=1).view(batch_size,1,1) + 1e-12)
+            update = g_m
+        else:
+            # normalized gradient per example
+            update = grad / (torch.norm(grad.view(batch_size, -1), p=1, dim=1).view(batch_size,1,1) + 1e-12)
+
+        # Step: for targeted, we want to go negative gradient (minimize), for untargeted positive
+        delta = (delta - alpha * update).detach()
+        '''
+        if targeted:
+            delta = (delta - alpha * update).detach()
+        else:
+            delta = (delta + alpha * update).detach()
+        '''
+        # print(delta)
+        # print(update)
+        # print(asfasf)
+
+        # Project to L_inf ball
+        delta = torch.clamp(delta, min=-epsilon, max=epsilon)
+        # re-enable gradients on delta for next iter
+        delta.requires_grad_(True)
+    # print(dist_tgt)
+    # Final adversarial waveform
+    waveforms_adv = (waveforms + delta).clamp(-1.0, 1.0).detach()
+    return waveforms_adv
+    

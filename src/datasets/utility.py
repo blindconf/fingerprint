@@ -13,6 +13,7 @@ from torch.utils.data import Sampler
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import numpy as np
 
 
 class StratifiedSampler(Sampler):
@@ -67,7 +68,7 @@ class StratifiedSampler(Sampler):
 
 def collate_fn(batch):
 
-    tensors, labels = zip(*batch)
+    tensors, labels, path = zip(*batch)
     max_len = max(tensor.shape[-1] for tensor in tensors)
     padded_tensors = [torch.nn.functional.pad(tensor, (0, max_len - tensor.shape[-1])) for tensor in tensors]
 
@@ -84,7 +85,7 @@ def fingerprints_collate_fn(batch):
       - Returns the original lengths for each signal
     """
     # Separate the signals and labels from the batch list
-    signals, labels = zip(*batch)  # 'signals' and 'labels' are tuples
+    signals, labels, path = zip(*batch)  # 'signals' and 'labels' are tuples
 
     # Find the length of the longest signal in the batch
     max_length = max(signal.shape[1] for signal in signals)
@@ -106,7 +107,7 @@ def fingerprints_collate_fn(batch):
     # Convert labels tuple into a tensor
     labels = torch.tensor(labels, dtype=torch.long)
 
-    return signals, labels, original_lengths
+    return signals, labels, original_lengths, path
 
 def patch_wise_contrastive_learning(signals):
     patch_size = (64, 64)
@@ -317,6 +318,20 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
             test_df=test_df,
             seed=seed
         )
+
+    if classification_type=='multiclass' and corpus=='jsut': # model in ['lcnn', 'fingerprint'] and
+        # Expand training sets
+        train_temp = []
+        validate_temp = []
+        test_temp = []
+        for _ in range(6): # 4
+            train_temp.append(train_df)
+            validate_temp.append(validate_df)
+            test_temp.append(test_df)
+        train_df = pd.concat(train_temp)
+        validate_df = pd.concat(validate_temp)
+        test_df = pd.concat(test_temp)
+
     n_classes = len(CLASSES[classification_type][corpus])
     print("Number of training classes: ", n_classes)
     # Filter by num_classes
@@ -331,10 +346,11 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
             print(len(train_df[train_df["label"] == _]), len(validate_df[validate_df["label"] == _]), len(test_df[test_df["label"] == _]), _)
 
     if model == "fingerprint" or model == "fingerprint_2":
+        
         target_sr = sample_rate
     else:
         target_sr = TARGET_SAMPLE_RATE[model]
-    if corruption_type == 1:
+    if corruption_type in [1, 2]:
         # Evasion Attack
         # Get 100 samples per category
         test_df = (
@@ -346,9 +362,9 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
     validate_df = validate_df.sample(frac=1, random_state=seed).reset_index(drop=True)
     test_df = test_df.sample(frac=1, random_state=seed).reset_index(drop=True)
 
-    train_ds = CustomDataset(dataset_df=train_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, coef=coef, n_fft=n_fft, hop_length=hop_length)
-    validate_ds = CustomDataset(dataset_df=validate_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, coef=coef, n_fft=n_fft, hop_length=hop_length)
-    test_ds = CustomDataset(dataset_df=test_df, sample_rate=sample_rate, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor, coef=coef, n_fft=n_fft, hop_length=hop_length)
+    train_ds = CustomDataset(dataset_df=train_df, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, coef=coef, n_fft=n_fft, hop_length=hop_length)
+    validate_ds = CustomDataset(dataset_df=validate_df, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, coef=coef, n_fft=n_fft, hop_length=hop_length)
+    test_ds = CustomDataset(dataset_df=test_df, target_sample_rate=target_sr, model=model, classification_type=classification_type, mean=None, std=None, seed=seed, corruption_type=corruption_type, scale_factor=scale_factor, coef=coef, n_fft=n_fft, hop_length=hop_length)
 
     print(f'Train dataset of size {len(train_df)}')
     print(f'Validate dataset of size {len(validate_df)}')
@@ -356,3 +372,14 @@ def get_datasets(model, classification_type, seed, corruption_type, scale_factor
     print(f'Total size: {len(train_df) + len(validate_df) + len(test_df)}')
 
     return train_ds, validate_ds, test_ds, None
+
+def SNR(src_wave, tgt_wave):
+    if src_wave.shape != tgt_wave.shape:
+        print("Source and target waves must have equal length")
+    # Calculate the power of the signal and noise
+    signal_power = np.mean(src_wave[0].cpu().numpy() ** 2)
+    diff = tgt_wave[0].cpu().numpy() - src_wave[0].cpu().numpy()
+    noise_power = np.mean(diff ** 2)
+
+    # Calculate SNR in decibels (dB)
+    return 10 * np.log10(signal_power / noise_power)

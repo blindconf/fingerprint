@@ -145,6 +145,8 @@ def save_heatmap(conf_matrix, destination_url, classification_type, corruption_t
     plt.title("Confusion Matrix")
     if corruption_type == 1:
         plt.savefig(f'{destination_url}/evasion_testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}.png', bbox_inches="tight")
+    elif corruption_type == 2:
+        plt.savefig(f'{destination_url}/adapt_attack_testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}.png', bbox_inches="tight")
     else:
         plt.savefig(f'{destination_url}/testing_heatmap_corrtype_{corruption_type}_factor{scale_factor}.png', bbox_inches="tight")
     print("Heatmaps of Confusion matrices saved...")

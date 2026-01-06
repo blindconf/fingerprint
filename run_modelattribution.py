@@ -24,6 +24,7 @@ from encodec import EncodecModel
 from src.fingerprinting.fingerprinting import WaveformToAvgSpec, FingerprintingWrapper
 from src.fingerprinting.audio_dataLoader import AudioDataSet, collate_fn
 from src.training.invariables import DATASETS
+import time
 
 
 # Setup logger
@@ -164,9 +165,11 @@ def main(args):
     # Loop over each attack label (each fake model) to train a dedicated fingerprint.
     nfft = int((args.window_size / 1000) * args.sample_rate)
     hop_len = int((args.hop_size / 1000) * args.sample_rate)
+
     for label in attack_labels:
         os.makedirs(f"{finger_folder}/{CORPUS_DICT_REVERSE[label]}", exist_ok=True)
         attack_df = train_df[train_df["label"] == label]        
+        # attack_df = train_df[train_df["label"] == label].iloc[:100]
         args.num_train = len(attack_df)
         num_train_data_dict[label] = args.num_train
         # Sanity check for Mahalanobis scoring function
@@ -201,7 +204,9 @@ def main(args):
             logger.info("======================================")
             logger.info(f"Processing {CORPUS_DICT_REVERSE[label]}!")
             logger.info("======================================")
-            
+            # >>> START TIMING FINGERPRINT EXTRACTION
+            t_start = time.time()
+            # <<<
             if args.trend_correction or args.filter_type=='Oracle':
                 real_audio_ds = AudioDataSet(
                                 annotation_df=real_audio_train_df[["path"]],  
@@ -219,7 +224,10 @@ def main(args):
                 wrapper.train(dataloader, real_audio_dataloader)
             else:
                 wrapper.train(dataloader)
-            
+            # >>> END TIMING FINGERPRINT EXTRACTION
+            t_end = time.time()
+            logger.info(f"Fingerprint construction time for {CORPUS_DICT_REVERSE[label]}: {t_end - t_start:.2f} seconds")
+            # <<<    
             with open(fingerprint_path, 'wb') as f:
                 pickle.dump(wrapper.fingerprint, f)
             if args.scorefunction == 'mahalanobis':
@@ -252,7 +260,7 @@ def main(args):
                 invcov_path = caching_paths['invcov']
                 with open(invcov_path, 'rb') as f:
                     wrapper.invcov = pickle.load(f)
-
+            print(wrapper.fingerprint.shape, wrapper.invcov.shape)
             outputs = {}
             pd.set_option('display.max_colwidth', None)  # Shows full column content
 
@@ -292,7 +300,14 @@ def main(args):
                 if args.filter_type == 'Oracle':
                     output = wrapper.forward(audio_test_dataloader, real_audio_dataloader)
                 else:    
+                    # >>> MEASURE ATTRIBUTION TIME
+                    t0 = time.time()
                     output = wrapper.forward(audio_test_dataloader)
+                    t1 = time.time()
+                    num_samples = len(test_df_)
+                    avg_time_per_sample = (t1 - t0) / num_samples
+                    logger.info(f"Attribution time per sample ({CORPUS_DICT_REVERSE[label]} → {CORPUS_DICT_REVERSE[label_test]}): {avg_time_per_sample:.6f} seconds")
+                    # <<<
                 outputs[label_test] = output.cpu().tolist()
                 
             if args.filter_type != 'Oracle':

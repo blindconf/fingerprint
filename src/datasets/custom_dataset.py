@@ -11,18 +11,18 @@ import warnings
 
 class CustomDataset(Dataset):
 
-    def __init__(self, dataset_df, sample_rate, target_sample_rate, model, classification_type, mean, std, seed, 
+    def __init__(self, dataset_df, target_sample_rate, model, classification_type, mean, std, seed, 
                 postprocess=None, corruption_type=0, scale_factor=1.0, coef=None, n_fft=None, hop_length=None) -> None:
 
         self.df = dataset_df
         self.model = model
-        self.sample_rate = sample_rate
+        # self.sample_rate = sample_rate
         self.target_sample_rate = target_sample_rate
         self.classification_type = classification_type
         self.mean = mean
         self.std = std
         # Resampler (will be identity if sr == target_sr)
-        self.resampler = Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
+        # self.resampler = Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
         self.postprocess = postprocess
         self.seed = seed
         # self.coef = coef
@@ -72,11 +72,14 @@ class CustomDataset(Dataset):
 
         row = self.df.iloc[index]
         sample_uri, label = row["path"], row["label"]
-
         waveform, sr = load(sample_uri)
-        waveform = waveform.float()
+        # print(waveform)
+        # print(sr, self.target_sample_rate)
+        # waveform = waveform.float()
         # print(self.sample_rate, self.target_sample_rate)
-        waveform = self.resampler(waveform)
+        waveform = self._resample_if_necessary(waveform, sr)
+
+        #  = self.resampler(waveform)
         # features = self.transform(waveform) # .squeeze(0)
         # if self.model in ["fingerprint", "fingerprint_2"] :
         '''
@@ -116,7 +119,9 @@ class CustomDataset(Dataset):
                 features = features[:, :64]
             # '''
             features = self.postprocess(features)
-        return features, torch.tensor(label, dtype=torch.long)
+        if self.corruption_type == 2:
+            return features, torch.tensor(label, dtype=torch.long), sample_uri
+        return features, torch.tensor(label, dtype=torch.long), None
 
     def __len__(self):
         return len(self.df)
@@ -125,3 +130,17 @@ class CustomDataset(Dataset):
         """Trim both tensors along the last dimension to the same minimum length."""
         min_len = min(a.shape[-1], b.shape[-1])
         return a[..., :min_len], b[..., :min_len]
+
+    def _resample_if_necessary(self, signal, sr):
+        """
+        Resamples the signal to the target sample rate if necessary.
+        
+        :param signal: Audio signal to be resampled.
+        :param sr: Original sample rate of the audio signal.
+        :return: Resampled audio signal.
+        """
+        if sr != self.target_sample_rate:
+            resampler = Resample(sr, self.target_sample_rate)
+            signal = resampler(signal)
+            # print("signal: ", signal)
+        return signal
