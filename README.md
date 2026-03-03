@@ -1,20 +1,16 @@
-# [Paper Under Revision] Lightweight Model Attribution and Detection of Synthetic Speech via Audio Residual Fingerprints.
+# [Paper Under Revision] Lightweight Detection and Model Attribution of Synthetic Speech via Residual Statistical Fingerprints.
 
 We propose a simple, training-free method for detecting AI-generated speech and attributing it to its source model by leveraging standardized average residuals as distinctive fingerprints. 
-Our approach effectively addresses single-model attribution, multi-model attribution, and synthetic versus real speech detection, achieving high accuracy and robustness across diverse speech synthesis systems.
+Our approach effectively addresses single-model attribution, multi-model attribution, synthetic versus real speech classification, and out-of-domain detection; achieving high accuracy and robustness across diverse speech synthesis systems.
 
 ![logo](resources/single_model.png) 
 
-This paper [Lightweight Model Attribution and Detection of Synthetic Speech via Audio Residual Fingerprints](https://github.com/blindconf/fingerprint) is currently under revision to SaTML 2026. A demo with a selection of fake audio samples from different AI-Generated models employed in our experiments is available online: [Fingerprint Demo](https://blindconf.github.io/fingerprint_demo/).
-> As speech generation technologies continue to advance in quality and accessibility, the risk of malicious use cases, including impersonation, misinformation, and spoofing, increases rapidly.
+This paper [Lightweight Detection and Model Attribution of Synthetic Speech via Residual Statistical Fingerprints](https://github.com/blindconf/fingerprint) is currently under revision. A demo with a selection of fake audio samples from different AI-Generated models employed in our experiments is available online: [Fingerprint Demo](https://blindconf.github.io/fingerprint_demo/).
 > As speech generation technologies advance, so do risks of impersonation, misinformation, and spoofing.
-> We present a lightweight, training-free approach for detecting synthetic speech and attributing it to its source model.
-> Our method addresses three tasks: (1) single-model attribution in an open-world setting, (2) multi-model attribution in a closed-world setting, and (3) real vs. synthetic speech classification.
-> The core idea is simple: we compute standardized average residuals—the difference between an audio signal and its filtered version—to extract model-agnostic fingerprints that capture synthesis artifacts.
-> Experiments across multiple synthesis systems and languages show AUROC scores above 99\%, with strong reliability even when only a subset of model outputs is available.
-> The method maintains high performance under common audio distortions, including echo and moderate background noise, while data augmentation can improve results in more challenging conditions.
-> Out-of-domain detection is performed using Mahalanobis distances to in-domain residual fingerprints, achieving an F1 score of 0.91 on unseen models.
-> These results demonstrate that our technique is efficient, generalizable, and practical for digital forensics and security applications.
+> We present a lightweight, training-free method for synthetic speech detection and source model attribution.
+> Our method builds on model-specific fingerprints that are computed as the average of the differences between audio signals and their filtered versions, referred to as residuals.
+> Leveraging the Mahalanobis distance of the residual for a given audio signal to these model-specific fingerprints allows to identify the source model as well as to distinguish real from fake audio.
+> A broad set of experiments across multiple synthesis systems and languages demonstrate a supreme performance of the proposed approach on four tasks: open-world single-model attribution, closed-world multi-model attribution, real vs.~synthetic speech classification, and out-of-domain detection.
 
 ### Computing Fingerprints and running the Open-world setting
 To compute the fingerprints run the script as follows:
